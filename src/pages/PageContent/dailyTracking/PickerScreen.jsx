@@ -1,4 +1,5 @@
 import { Box, Text, Stack, UnstyledButton, Badge, Image } from '@mantine/core'
+import { IconArrowLeft } from '@tabler/icons-react'
 import { COLORS, FONT_FAMILY } from './dotToDotTheme'
 import brennanLogo from '../../../assets/brennan-logo.png'
 
@@ -17,14 +18,25 @@ export default function PickerScreen({ title, subtitle, items, selectedId, onSel
     >
       {showLogo && <Image src={brennanLogo} h={44} fit="contain" mb={20} />}
 
-      {onBack && (
-        <UnstyledButton onClick={onBack} mb={12} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
-          ← Back
-        </UnstyledButton>
-      )}
-
       <Text c="#fff" fw={800} size="xl" ta="center" mb={4}>{title}</Text>
-      {subtitle && <Text c="rgba(255,255,255,0.55)" size="sm" ta="center" mb={24}>{subtitle}</Text>}
+      {subtitle && <Text c="rgba(255,255,255,0.55)" size="sm" ta="center" mb={16}>{subtitle}</Text>}
+
+      {onBack && (
+        <Box w="100%" maw={380} mb={16}>
+          <UnstyledButton
+            onClick={onBack}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 18px 8px 14px', borderRadius: 999,
+              background: COLORS.white,
+              color: COLORS.primaryBlueDark,
+            }}
+          >
+            <IconArrowLeft size={15} />
+            <Text size="sm" fw={700} c="inherit">Back</Text>
+          </UnstyledButton>
+        </Box>
+      )}
 
       <Stack gap={10} w="100%" maw={380}>
         {items.map((item) => {

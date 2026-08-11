@@ -6,11 +6,13 @@ import TimeStepper from './dailyTracking/TimeStepper'
 import LaneStepModal from './dailyTracking/LaneStepModal'
 import AddPastSessionModal from './dailyTracking/AddPastSessionModal'
 import { COLORS, CATEGORY_COLORS, FONT_FAMILY } from './dailyTracking/dotToDotTheme'
-import { SAMPLE_PROJECTS } from '../../data/dailyTrackingSampleData'
+import { getProjectExtras } from '../../data/dailyTrackingSampleData'
+import { useDomainData } from '../../hooks/useDomainData'
+import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from '../../assets/brennan-logo.png'
 
 // Device-local only (crash-recovery testing) — not a Pivotly domain call.
-const RECOVERY_KEY = 'dtd_sample_active_session_v1'
+const RECOVERY_KEY = 'dtd_active_session_v1'
 
 function activeTileLabel(project) {
   return project.workType === 'capping' ? 'ACTIVE CAPPING' : 'ACTIVE DREDGING'
@@ -45,25 +47,51 @@ function formatTimeOfDay(date) {
 // Reads any in-progress session left over from before a reload. Only ever
 // evaluated once, as a useState lazy initializer (not an effect) — the
 // compiler-safe way to hydrate initial state from an external source.
+// Can't resolve the actual project record here (real project data loads
+// asynchronously via useDomainData, not available yet at this point) — that
+// resolution happens at render time instead, once real data has loaded.
 function readRecovery() {
   try {
     const raw = localStorage.getItem(RECOVERY_KEY)
     if (!raw) return null
-    const saved = JSON.parse(raw)
-    const proj = SAMPLE_PROJECTS.find((p) => p.id === saved.projectId)
-    if (!proj) { localStorage.removeItem(RECOVERY_KEY); return null }
-    return { ...saved, project: proj }
+    return JSON.parse(raw)
   } catch {
     localStorage.removeItem(RECOVERY_KEY)
     return null
   }
 }
 
-export default function DailyTrackingPage() {
+export default function DailyTrackingPage({ domainSources = [] }) {
+  const projectsSource = findDomainSource(domainSources, 'projects')
+  const operatorsSource = findDomainSource(domainSources, 'operators')
+  const equipmentsSource = findDomainSource(domainSources, 'equipments')
+
+  const { records: projectRecords, loading: projectsLoading } = useDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
+  const { records: operatorRecords } = useDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
+  const { records: equipmentRecords } = useDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
+
+  // Real projects/equipment/operators, joined client-side on the plain
+  // project_id uuid column (there's no real FK constraint backing it — see
+  // ../../../DOMAIN_SCHEMA_GAP_ANALYSIS.md). work_type/areas/pass options/
+  // delay codes have no real domain yet, so those come from the local
+  // lookup keyed by project name.
+  const projects = projectRecords.map((p) => ({
+    id: p.project_id,
+    name: p.name,
+    equipment: equipmentRecords.filter((e) => e.project_id === p.project_id).map((e) => e.name),
+    operators: operatorRecords.filter((o) => o.project_id === p.project_id).map((o) => o.name),
+    ...getProjectExtras(p.name),
+  }))
+
   const [recovery] = useState(readRecovery)
+  // Real project data loads asynchronously, so the recovered session's
+  // project can only be resolved once `projects` has real rows — this is a
+  // plain derived value recomputed each render, not state, so there's
+  // nothing to synchronize via an effect.
+  const recoveredProject = recovery ? projects.find((p) => p.id === recovery.projectId) : null
 
   const [step, setStep] = useState(recovery ? 'sessionInterrupted' : 'project')
-  const [project, setProject] = useState(recovery?.project ?? null)
+  const [project, setProject] = useState(null)
   const [equipment, setEquipment] = useState(recovery?.equipment ?? null)
   const [operator, setOperator] = useState(recovery?.operator ?? null)
   const [shiftStart, setShiftStart] = useState(null)
@@ -112,7 +140,7 @@ export default function DailyTrackingPage() {
 
   // ── Setup flow ──────────────────────────────────────────────────────────
   function selectProject(item) {
-    const proj = SAMPLE_PROJECTS.find((p) => p.id === item.id)
+    const proj = projects.find((p) => p.id === item.id)
     setProject(proj)
     setAreaValue(''); setPassValue('')
     if (proj.equipment.length === 1) {
@@ -259,6 +287,9 @@ export default function DailyTrackingPage() {
   }
 
   // ── Crash recovery save/discard ─────────────────────────────────────────
+  // Both resolve into the recovered project/equipment/operator so the main
+  // tracking screen that follows has proper context, matching what used to
+  // be set at init before project data had to load asynchronously.
   function saveRecoveredSession() {
     const start = new Date(recoveryData.startTimeISO)
     const end = new Date(start)
@@ -266,27 +297,53 @@ export default function DailyTrackingPage() {
     if (end <= start) end.setDate(end.getDate() + 1)
     setSessions((prev) => [{
       id: crypto.randomUUID(),
-      category: recoveryData.activity.active ? activeTileLabel(project) : recoveryData.activity.code,
+      category: recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code,
       delayCategory: recoveryData.activity.active ? null : recoveryData.activity.category,
       startTime: start, endTime: end, durationMs: end - start,
       operatorName: recoveryData.operator, areaL1: recoveryData.areaL1, pass: recoveryData.pass,
       description: recoveryData.notes, lane: recoveryData.lane, step: recoveryData.step,
     }, ...prev])
     localStorage.removeItem(RECOVERY_KEY)
+    setProject(recoveredProject)
+    setEquipment(recoveryData.equipment)
+    setOperator(recoveryData.operator)
     setRecoveryData(null)
     setStep('tracking')
   }
   function discardRecoveredSession() {
     localStorage.removeItem(RECOVERY_KEY)
+    setProject(recoveredProject)
+    setEquipment(recoveryData.equipment)
+    setOperator(recoveryData.operator)
     setRecoveryData(null)
     setStep('tracking')
   }
 
   // ── Render: crash recovery ──────────────────────────────────────────────
   if (step === 'sessionInterrupted' && recoveryData) {
+    if (!recoveredProject) {
+      // Either real project data is still loading, or the recovered
+      // project no longer exists — either way there's nothing more
+      // specific to show yet than this, so offer just a manual discard.
+      return (
+        <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.recoveryBg }}>
+          <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
+            <Text c="#fff" fw={800} size="xl" mb={6}>Session interrupted</Text>
+            <Text c="rgba(255,255,255,0.55)" size="sm" mb={20}>
+              {projectsLoading ? 'Loading project data…' : "This session's project could not be found."}
+            </Text>
+            {!projectsLoading && (
+              <UnstyledButton onClick={discardRecoveredSession} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
+                Discard — session was already stopped
+              </UnstyledButton>
+            )}
+          </Box>
+        </ScrollArea>
+      )
+    }
     const startDt = new Date(recoveryData.startTimeISO)
-    const label = recoveryData.activity.active ? activeTileLabel(project) : recoveryData.activity.code
-    const badgeColor = recoveryData.activity.active ? COLORS.secondaryGreen : groupColor(project, recoveryData.activity.category)
+    const label = recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code
+    const badgeColor = recoveryData.activity.active ? COLORS.secondaryGreen : groupColor(recoveredProject, recoveryData.activity.category)
     const agoMs = now - startDt.getTime()
     const agoH = Math.floor(agoMs / 3600000)
     const agoM = Math.floor((agoMs % 3600000) / 60000)
@@ -319,8 +376,8 @@ export default function DailyTrackingPage() {
     return (
       <PickerScreen
         title="Select Project"
-        subtitle={new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-        items={SAMPLE_PROJECTS.map((p) => ({ id: p.id, label: p.name, sub: p.client }))}
+        subtitle={projectsLoading ? 'Loading projects…' : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        items={projects.map((p) => ({ id: p.id, label: p.name }))}
         selectedId={project?.id}
         onSelect={selectProject}
       />

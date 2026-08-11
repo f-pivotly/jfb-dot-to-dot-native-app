@@ -1,20 +1,31 @@
-// Static stand-in for real Pivotly domain data (deferred). Values mirror the
-// actual jfb-dot-to-dot Supabase seed (see ../../../DOT_TO_DOT_TESTING_GUIDE.md)
-// rather than invented placeholders, so this reads like the real thing.
+// Local-only lookup for the project attributes that don't have a real
+// domain yet — work_type, areas, pass/lift options, delay codes (see
+// ../../DOMAIN_SCHEMA_GAP_ANALYSIS.md). Project identity, equipment, and
+// operators now come from the real `projects`/`equipments`/`operators`
+// domains connected to this page (apg-jfb-dot-to-dot-daily-event) — this
+// lookup only fills in the remaining gaps, keyed by the real project name.
+//
+// Values mirror the actual jfb-dot-to-dot Supabase seed (see
+// ../../../DOT_TO_DOT_TESTING_GUIDE.md) rather than invented placeholders.
 
 const LIFT_OPTIONS = ['Lift 1', 'Lift 2', 'Lift 3', 'Lift 4', 'Lift 5', 'Lift 6', 'Lift 7', 'Lift 8', 'N/A'];
 
-export const SAMPLE_PROJECTS = [
-  {
-    id: 'sandy-point',
-    name: 'Sandy Point Harbor Dredging',
-    client: 'Sandy Point Port Authority',
+export const DEFAULT_PROJECT_EXTRAS = {
+  workType: 'dredging',
+  areaLabel: 'Area',
+  passLabel: 'Pass',
+  areas: [],
+  passOptions: [],
+  usesLaneStep: false,
+  delayCodes: [],
+};
+
+export const PROJECT_EXTRAS_BY_NAME = {
+  'Sandy Point Harbor Dredging': {
     workType: 'dredging',
     areaLabel: 'Area',
     passLabel: 'Pass',
     areas: ['North Basin', 'Turning Basin', 'South Channel'],
-    equipment: ['Sandy Point I', 'Harbor Runner'],
-    operators: ['Jake Ramirez', 'Maria Chen', "Tom O'Brien", 'Devon Walsh'],
     passOptions: ['1st Pass', '2nd Pass', '3rd Pass', '4th Pass', '5th Pass'],
     usesLaneStep: false,
     delayCodes: [
@@ -38,16 +49,11 @@ export const SAMPLE_PROJECTS = [
       { category: 'Survey/Admin', code: 'Waiting on Instructions', codeNum: 62 },
     ],
   },
-  {
-    id: 'clearwater-cove',
-    name: 'Clearwater Cove Capping',
-    client: 'Clearwater Cove Remediation Trust',
+  'Clearwater Cove Capping': {
     workType: 'capping',
     areaLabel: 'Subarea',
     passLabel: 'Lift',
     areas: ['Subarea 1', 'Subarea 2', 'Subarea 3'],
-    equipment: ['Cove Spreader', 'Barge Placer'],
-    operators: ['Sam Fischer', 'Lena Ortiz', 'Priya Nair'],
     passOptions: LIFT_OPTIONS,
     usesLaneStep: true,
     delayCodes: [
@@ -66,4 +72,8 @@ export const SAMPLE_PROJECTS = [
       { category: 'Mobilization', code: 'Move Spreader', codeNum: 50 },
     ],
   },
-];
+};
+
+export function getProjectExtras(projectName) {
+  return PROJECT_EXTRAS_BY_NAME[projectName] ?? DEFAULT_PROJECT_EXTRAS;
+}

@@ -6,7 +6,7 @@ import CrewRosterPage from "./CrewRosterPage";
 import DailyTrackingPage from "./DailyTrackingPage";
 
 const CREW_ROSTER_PAGE_SLUG = "apg-ofa_person";
-const DAILY_TRACKING_PAGE_SLUG = "apg-ofa_daily_event";
+const DAILY_TRACKING_PAGE_SLUG = "apg-jfb-dot-to-dot-daily-event";
 
 export default function PageContent({
   pageData,
@@ -110,14 +110,7 @@ export default function PageContent({
   }
 
   if (slug === DAILY_TRACKING_PAGE_SLUG) {
-    const eventSource = domainSources[0];
-    return (
-      <DailyTrackingPage
-        domain={eventSource?.domain}
-        system={eventSource?.system}
-        actions={actions}
-      />
-    );
+    return <DailyTrackingPage domainSources={domainSources} actions={actions} />;
   }
 
   return (
