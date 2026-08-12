@@ -11,7 +11,6 @@ import { useDomainData } from '../../hooks/useDomainData'
 import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from '../../assets/brennan-logo.png'
 
-// Device-local only (crash-recovery testing) — not a Pivotly domain call.
 const RECOVERY_KEY = 'dtd_active_session_v1'
 
 function activeTileLabel(project) {
@@ -44,12 +43,24 @@ function formatTimeOfDay(date) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
-// Reads any in-progress session left over from before a reload. Only ever
-// evaluated once, as a useState lazy initializer (not an effect) — the
-// compiler-safe way to hydrate initial state from an external source.
-// Can't resolve the actual project record here (real project data loads
-// asynchronously via useDomainData, not available yet at this point) — that
-// resolution happens at render time instead, once real data has loaded.
+async function saveDailyActivity(createFn, {
+  projectId, equipmentId, operatorId, sessionId, startTime, endTime,
+}) {
+  try {
+    await createFn({
+      project_id: projectId,
+      equipment_id: equipmentId,
+      operator_id: operatorId,
+      session_id: sessionId,
+      start_date_time: startTime.toISOString(),
+      end_date_time: endTime.toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    })
+  } catch (err) {
+    console.warn('daily_activities save failed (session kept locally):', err)
+  }
+}
+
 function readRecovery() {
   try {
     const raw = localStorage.getItem(RECOVERY_KEY)
@@ -65,35 +76,31 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const projectsSource = findDomainSource(domainSources, 'projects')
   const operatorsSource = findDomainSource(domainSources, 'operators')
   const equipmentsSource = findDomainSource(domainSources, 'equipments')
+  const dailyActivitiesSource = findDomainSource(domainSources, 'daily_activities')
 
   const { records: projectRecords, loading: projectsLoading } = useDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
   const { records: operatorRecords } = useDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
   const { records: equipmentRecords } = useDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
+  const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
-  // Real projects/equipment/operators, joined client-side on the plain
-  // project_id uuid column (there's no real FK constraint backing it — see
-  // ../../../DOMAIN_SCHEMA_GAP_ANALYSIS.md). work_type/areas/pass options/
-  // delay codes have no real domain yet, so those come from the local
-  // lookup keyed by project name.
   const projects = projectRecords.map((p) => ({
     id: p.project_id,
     name: p.name,
-    equipment: equipmentRecords.filter((e) => e.project_id === p.project_id).map((e) => e.name),
-    operators: operatorRecords.filter((o) => o.project_id === p.project_id).map((o) => o.name),
+    equipment: equipmentRecords.filter((e) => e.project_id === p.project_id).map((e) => ({ id: e.equipment_id, name: e.name })),
+    operators: operatorRecords.filter((o) => o.project_id === p.project_id).map((o) => ({ id: o.operator_id, name: o.name })),
     ...getProjectExtras(p.name),
   }))
 
   const [recovery] = useState(readRecovery)
-  // Real project data loads asynchronously, so the recovered session's
-  // project can only be resolved once `projects` has real rows — this is a
-  // plain derived value recomputed each render, not state, so there's
-  // nothing to synchronize via an effect.
   const recoveredProject = recovery ? projects.find((p) => p.id === recovery.projectId) : null
 
   const [step, setStep] = useState(recovery ? 'sessionInterrupted' : 'project')
   const [project, setProject] = useState(null)
   const [equipment, setEquipment] = useState(recovery?.equipment ?? null)
+  const [equipmentId, setEquipmentId] = useState(recovery?.equipmentId ?? null)
   const [operator, setOperator] = useState(recovery?.operator ?? null)
+  const [operatorId, setOperatorId] = useState(recovery?.operatorId ?? null)
+  const [sessionId, setSessionId] = useState(recovery?.sessionId ?? null)
   const [shiftStart, setShiftStart] = useState(null)
   const [shiftTime, setShiftTime] = useState(() => {
     const d = new Date()
@@ -103,10 +110,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [favoritesByProject, setFavoritesByProject] = useState({})
-  // Lazy initializer (not a bare `useState(Date.now())`) so the one impure
-  // call happens once at mount, not on every render — also gives the
-  // crash-recovery screen's "ago" readout a valid timestamp to diff against
-  // before any session has started ticking.
   const [now, setNow] = useState(() => Date.now())
 
   const [areaValue, setAreaValue] = useState('')
@@ -129,7 +132,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     return { hours: rounded.getHours(), minutes: rounded.getMinutes() }
   })
 
-  // ── Live timer tick while a session is running ─────────────────────────
   useEffect(() => {
     if (!activeSession) return
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -138,24 +140,26 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const favorites = (project && favoritesByProject[project.id]) || []
 
-  // ── Setup flow ──────────────────────────────────────────────────────────
   function selectProject(item) {
     const proj = projects.find((p) => p.id === item.id)
     setProject(proj)
     setAreaValue(''); setPassValue('')
     if (proj.equipment.length === 1) {
-      setEquipment(proj.equipment[0])
+      setEquipment(proj.equipment[0].name)
+      setEquipmentId(proj.equipment[0].id)
       setStep('operator')
     } else {
       setStep('equipment')
     }
   }
   function selectEquipment(item) {
-    setEquipment(item.id)
+    setEquipment(item.label)
+    setEquipmentId(item.id)
     setStep('operator')
   }
   function selectOperator(item) {
-    setOperator(item.id)
+    setOperator(item.label)
+    setOperatorId(item.id)
     setStep('shiftStart')
   }
   function confirmShiftStart() {
@@ -163,19 +167,23 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     d.setHours(shiftTime.hours, shiftTime.minutes, 0, 0)
     if (d > new Date()) d.setDate(d.getDate() - 1)
     setShiftStart(d)
+    setSessionId(crypto.randomUUID())
     setStep('tracking')
   }
   function skipShiftStart() {
     setShiftStart(new Date())
+    setSessionId(crypto.randomUUID())
     setStep('tracking')
   }
 
-  // ── Session logging ─────────────────────────────────────────────────────
   function persistActiveSession(session) {
     localStorage.setItem(RECOVERY_KEY, JSON.stringify({
       projectId: project.id,
       equipment,
+      equipmentId,
       operator,
+      operatorId,
+      sessionId,
       activity: session.activity,
       startTimeISO: session.startTime.toISOString(),
       areaL1: session.areaL1,
@@ -205,6 +213,14 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         step: cur.step,
       }, ...prev])
       localStorage.removeItem(RECOVERY_KEY)
+      saveDailyActivity(createDailyActivity, {
+        projectId: project.id,
+        equipmentId,
+        operatorId,
+        sessionId,
+        startTime: cur.startTime,
+        endTime: end,
+      })
       return null
     })
   }
@@ -253,7 +269,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setSessions((prev) => prev.filter((s) => s.id !== id))
   }
 
-  // ── End of Day ───────────────────────────────────────────────────────────
   function confirmShiftEnd() {
     const end = new Date()
     end.setHours(shiftEndTime.hours, shiftEndTime.minutes, 0, 0)
@@ -281,15 +296,23 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         })
       }
     }
-    if (gaps.length) setSessions((prev) => [...gaps, ...prev])
+    if (gaps.length) {
+      setSessions((prev) => [...gaps, ...prev])
+      gaps.forEach((gap) => {
+        saveDailyActivity(createDailyActivity, {
+          projectId: project.id,
+          equipmentId,
+          operatorId,
+          sessionId,
+          startTime: gap.startTime,
+          endTime: gap.endTime,
+        })
+      })
+    }
     setShiftEndOpen(false)
     setStep('confirmSetup')
   }
 
-  // ── Crash recovery save/discard ─────────────────────────────────────────
-  // Both resolve into the recovered project/equipment/operator so the main
-  // tracking screen that follows has proper context, matching what used to
-  // be set at init before project data had to load asynchronously.
   function saveRecoveredSession() {
     const start = new Date(recoveryData.startTimeISO)
     const end = new Date(start)
@@ -304,9 +327,20 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       description: recoveryData.notes, lane: recoveryData.lane, step: recoveryData.step,
     }, ...prev])
     localStorage.removeItem(RECOVERY_KEY)
+    saveDailyActivity(createDailyActivity, {
+      projectId: recoveredProject.id,
+      equipmentId: recoveryData.equipmentId,
+      operatorId: recoveryData.operatorId,
+      sessionId: recoveryData.sessionId,
+      startTime: start,
+      endTime: end,
+    })
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
+    setEquipmentId(recoveryData.equipmentId)
     setOperator(recoveryData.operator)
+    setOperatorId(recoveryData.operatorId)
+    setSessionId(recoveryData.sessionId)
     setRecoveryData(null)
     setStep('tracking')
   }
@@ -314,17 +348,16 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     localStorage.removeItem(RECOVERY_KEY)
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
+    setEquipmentId(recoveryData.equipmentId)
     setOperator(recoveryData.operator)
+    setOperatorId(recoveryData.operatorId)
+    setSessionId(recoveryData.sessionId)
     setRecoveryData(null)
     setStep('tracking')
   }
 
-  // ── Render: crash recovery ──────────────────────────────────────────────
   if (step === 'sessionInterrupted' && recoveryData) {
     if (!recoveredProject) {
-      // Either real project data is still loading, or the recovered
-      // project no longer exists — either way there's nothing more
-      // specific to show yet than this, so offer just a manual discard.
       return (
         <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.recoveryBg }}>
           <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
@@ -371,7 +404,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     )
   }
 
-  // ── Render: Select Project / Equipment / Operator ───────────────────────
   if (step === 'project') {
     return (
       <PickerScreen
@@ -388,8 +420,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       <PickerScreen
         title="Select Equipment"
         subtitle={project.name}
-        items={project.equipment.map((e) => ({ id: e, label: e }))}
-        selectedId={equipment}
+        items={project.equipment.map((e) => ({ id: e.id, label: e.name }))}
+        selectedId={equipmentId}
         onSelect={selectEquipment}
         onBack={() => setStep('project')}
       />
@@ -400,15 +432,14 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       <PickerScreen
         title="Who is operating?"
         subtitle={`${equipment} · ${project.name}`}
-        items={project.operators.map((o) => ({ id: o, label: o }))}
-        selectedId={operator}
+        items={project.operators.map((o) => ({ id: o.id, label: o.name }))}
+        selectedId={operatorId}
         onSelect={selectOperator}
         onBack={() => setStep(project.equipment.length > 1 ? 'equipment' : 'project')}
       />
     )
   }
 
-  // ── Render: Shift Start ──────────────────────────────────────────────────
   if (step === 'shiftStart' && project) {
     return (
       <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.primaryBlue }}>
@@ -429,7 +460,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     )
   }
 
-  // ── Render: "Good morning" confirm-setup screen ──────────────────────────
   if (step === 'confirmSetup' && project) {
     const rows = [
       { label: 'Project', value: project.name, onEdit: () => setStep('project') },
@@ -466,7 +496,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     )
   }
 
-  // ── Render: main tracking screen ────────────────────────────────────────
   if (!project) return null
 
   const activeIsRunning = !!activeSession
@@ -479,7 +508,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   return (
     <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.lightGray }}>
       <Box style={{ fontFamily: FONT_FAMILY }}>
-        {/* Identity header — matches .app-header gradient */}
         <Box px={20} py={14} style={{ background: `linear-gradient(135deg, ${COLORS.primaryBlue} 0%, ${COLORS.primaryBlueDark} 100%)` }}>
           <Group justify="space-between" align="center">
             <Group gap={16}>
@@ -509,7 +537,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           </Group>
         </Box>
 
-        {/* Status bar */}
         <Group justify="space-between" px={20} py={8} style={{ background: COLORS.mediumGray, borderBottom: `1px solid ${COLORS.borderGray}` }}>
           <Text size="xs" fw={600} c={activeIsRunning ? COLORS.secondaryGreen : COLORS.textMedium}>
             {activeIsRunning ? `● Recording: ${activityLabel(activeSession.activity, project)}` : '● Ready - Tap a category to start'}
@@ -519,7 +546,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           </Badge>
         </Group>
 
-        {/* Active session bar */}
         {activeIsRunning && (
           <Group justify="space-between" px={20} py={12} mx={15} my={10} style={{ background: COLORS.warningBg, border: `1px solid ${COLORS.warningBorder}`, borderRadius: 8 }}>
             <Box>
@@ -532,14 +558,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           </Group>
         )}
 
-        {/* Session fields */}
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
           <Select label={project.areaLabel} data={project.areas} value={areaValue} onChange={(v) => setAreaValue(v ?? '')} clearable size="xs" style={{ width: 160 }} />
           <Select label={project.passLabel} data={project.passOptions} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
         </Group>
 
-        {/* Categories grid */}
         <Box p={16}>
           <UnstyledButton
             disabled={activeIsRunning && activeSession.activity.active}
@@ -588,7 +612,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           </Group>
         </Box>
 
-        {/* Sessions list */}
         <Box px={16} pb={16}>
           {sessions.length === 0 ? (
             <Box style={{ background: '#fff', border: `1px dashed ${COLORS.borderGray}`, borderRadius: 8 }} py={30}>
@@ -630,10 +653,19 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         onClose={() => setAddPastOpen(false)}
         project={project}
         activeTileLabel={activeTileLabel(project)}
-        onSave={(s) => setSessions((prev) => [{ id: crypto.randomUUID(), ...s }, ...prev])}
+        onSave={(s) => {
+          setSessions((prev) => [{ id: crypto.randomUUID(), ...s }, ...prev])
+          saveDailyActivity(createDailyActivity, {
+            projectId: project.id,
+            equipmentId,
+            operatorId: s.operatorId,
+            sessionId,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          })
+        }}
       />
 
-      {/* End of Day — full-screen overlay, matching the original */}
       {shiftEndOpen && (
         <Box style={{ position: 'fixed', inset: 0, background: COLORS.shiftEndBg, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <Box style={{ maxWidth: 380, width: '100%', textAlign: 'center', fontFamily: FONT_FAMILY }}>

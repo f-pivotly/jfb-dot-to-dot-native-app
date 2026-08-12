@@ -1,7 +1,3 @@
-// Exact values pulled from jfb-dot-to-dot's own css/styles.css and js/app.js —
-// this page intentionally matches the *source* app's look, not the shell's
-// existing Mantine theme (src/theme/index.js is untouched; this is scoped
-// entirely to DailyTrackingPage and its subcomponents).
 export const COLORS = {
   primaryBlue: '#004682',
   primaryBlueDark: '#003366',
@@ -18,15 +14,13 @@ export const COLORS = {
   warningBorder: '#FFE69C',
   warningText: '#856404',
   successGreen: '#28A745',
-  recoveryBg: '#1a1a2e', // session-interrupted screen
-  shiftEndBg: '#0F2744', // end-of-day screen
-  shiftEndAccent: '#1A5CA8', // end-of-day "Confirm Shift End" button
+  recoveryBg: '#1a1a2e',
+  shiftEndBg: '#0F2744',
+  shiftEndAccent: '#1A5CA8',
 }
 
 export const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif"
 
-// Same rotation jfb-dot-to-dot uses for delay-code category tiles
-// (DotToDotApp.defaultColors in js/app.js).
 export const CATEGORY_COLORS = [
   '#004682', '#2E8B57', '#4169E1',
   '#20B2AA', '#6B8E23', '#708090', '#5F9EA0',

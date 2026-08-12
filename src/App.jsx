@@ -1,6 +1,6 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Box, Text, Loader, Center } from "@mantine/core";
-import AppHeader from "./components/AppHeader";
 import PageContent from "./pages/PageContent";
 import DailyTrackingPage from "./pages/PageContent/DailyTrackingPage";
 
@@ -12,12 +12,11 @@ import { REQUIRED_PICKLISTS } from "./config/requiredPicklists";
 import { SAMPLE_MODE } from "./config/sampleMode";
 
 export default function App() {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
   const { ready, error: configError, fromCache: configFromCache } = useAppConfig();
   const { loading: picklistsLoading, missing: missingPicklists } = usePicklistCatalog(REQUIRED_PICKLISTS);
 
-  const { menuItems, defaultItem, loading: navLoading, fromCache: navFromCache } = useNav();
+  const { menuItems, defaultItem, dataAccess, fromCache: navFromCache } = useNav();
   const {
     pageData,
     loading: pageLoading,
@@ -29,12 +28,15 @@ export default function App() {
 
   const usingCachedShell = configFromCache || navFromCache || pageFromCache;
 
-  // Sample-mode bypass: renders DailyTrackingPage directly with static data
-  // instead of waiting on a real Pivotly parent handshake + backend nav
-  // registration (neither exists yet for this page). See src/config/sampleMode.js.
-  // All the hooks above still get called normally (rules-of-hooks) — they just
-  // never fire real network requests since `ready`/`config.appSlug` never
-  // resolve without a real parent, so this also works fully offline.
+  const activeItem = menuItems.find((n) => n.path === pathname) ?? defaultItem ?? null;
+  const resolvedSlug = activeItem?.page_slug ?? null;
+
+  const hasShellDataAccess = dataAccess.some((s) => s?.source_type === "domain" && s?.domain);
+
+  useEffect(() => {
+    if (resolvedSlug && !slug) loadPage(resolvedSlug);
+  }, [resolvedSlug, slug, loadPage]);
+
   if (SAMPLE_MODE) {
     return (
       <Box
@@ -47,7 +49,6 @@ export default function App() {
           fontSize: 13,
         }}
       >
-        <AppHeader menuItems={[]} activeSlug={null} onNav={() => {}} navLoading={false} />
         <DailyTrackingPage />
       </Box>
     );
@@ -129,18 +130,39 @@ export default function App() {
     );
   }
 
-  const activeItem =
-    menuItems.find((n) => n.path === pathname) ?? defaultItem ?? null;
-
-  const resolvedSlug = activeItem?.page_slug ?? null;
-
-  function handleNav(navItem) {
-    navigate(navItem.path);
-    loadPage(navItem.page_slug);
-  }
-
   function handleRetry() {
     if (resolvedSlug) loadPage(resolvedSlug);
+  }
+
+  let mainContent;
+  if (activeItem) {
+    mainContent = (
+      <PageContent
+        pageData={pageData}
+        loading={pageLoading}
+        error={pageError}
+        slug={slug}
+        onRetry={handleRetry}
+      />
+    );
+  } else if (hasShellDataAccess) {
+    mainContent = <DailyTrackingPage domainSources={dataAccess} />;
+  } else {
+    mainContent = (
+      <Box
+        style={{
+          height: "80vh",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          fontSize: 24,
+          fontWeight: "bold",
+          opacity: 0.7,
+        }}
+      >
+        Select navigation item above
+      </Box>
+    );
   }
 
   return (
@@ -154,13 +176,6 @@ export default function App() {
         fontSize: 13,
       }}
     >
-      <AppHeader
-        menuItems={menuItems}
-        activeSlug={resolvedSlug}
-        onNav={handleNav}
-        navLoading={navLoading}
-      />
-
       {usingCachedShell && (
         <Box
           py={4}
@@ -178,29 +193,7 @@ export default function App() {
         </Box>
       )}
 
-      {activeItem ? (
-        <PageContent
-          pageData={pageData}
-          loading={pageLoading}
-          error={pageError}
-          slug={slug}
-          onRetry={handleRetry}
-        />
-      ) : (
-        <Box
-          style={{
-            height: "80vh",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            fontSize: 24,
-            fontWeight: "bold",
-            opacity: 0.7,
-          }}
-        >
-          Select navigation item above
-        </Box>
-      )}
+      {mainContent}
     </Box>
   );
 }

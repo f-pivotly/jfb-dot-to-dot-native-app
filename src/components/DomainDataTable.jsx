@@ -8,23 +8,20 @@ import SafeError from './SafeError'
 export default function DomainDataTable({ domain, system, actions = [] }) {
   const isEnabled = (key) => {
     const match = actions.find(a => a.action_key === key)
-    return match ? match.enabled : true  // default to true if action not declared
+    return match ? match.enabled : true
   }
   const canCreate = isEnabled('create_record')
   const canUpdate = isEnabled('update_record')
   const canDelete = isEnabled('delete_record')
   const { records, loading, error, creating, updating, deleting, reload, create, update, remove } = useDomainData({ domain, system })
 
-  // Create modal
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
 
-  // Edit modal
   const [editOpen, setEditOpen] = useState(false)
   const [editRow, setEditRow] = useState(null)
   const [editName, setEditName] = useState('')
 
-  // Delete confirm
   const [deleteRow, setDeleteRow] = useState(null)
 
   async function handleCreate() {
@@ -59,7 +56,6 @@ export default function DomainDataTable({ domain, system, actions = [] }) {
 
   return (
     <Box style={{ background: '#fff', border: '1px solid #ebebeb', borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
-      {/* Header */}
       <Box px={16} py={10} style={{ background: '#f9f9f9', borderBottom: '1px solid #ebebeb' }}>
         <Group justify="space-between" align="center">
           <Text size="xs" fw={700} style={{ letterSpacing: '1px', textTransform: 'uppercase', color: '#888' }}>
@@ -83,7 +79,6 @@ export default function DomainDataTable({ domain, system, actions = [] }) {
         </Group>
       </Box>
 
-      {/* Body */}
       <Box p={16}>
         {loading && <LoadingSpinner py={24} />}
         {!loading && <SafeError message={error} />}
@@ -139,7 +134,6 @@ export default function DomainDataTable({ domain, system, actions = [] }) {
         )}
       </Box>
 
-      {/* Create modal */}
       <Modal
         opened={createOpen}
         onClose={() => { setCreateOpen(false); setCreateName('') }}
@@ -163,7 +157,6 @@ export default function DomainDataTable({ domain, system, actions = [] }) {
         </Group>
       </Modal>
 
-      {/* Edit modal */}
       <Modal
         opened={editOpen}
         onClose={() => { setEditOpen(false); setEditRow(null) }}
@@ -187,7 +180,6 @@ export default function DomainDataTable({ domain, system, actions = [] }) {
         </Group>
       </Modal>
 
-      {/* Delete confirm modal */}
       <Modal
         opened={!!deleteRow}
         onClose={() => setDeleteRow(null)}

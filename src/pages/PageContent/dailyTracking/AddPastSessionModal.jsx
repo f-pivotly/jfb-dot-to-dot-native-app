@@ -21,17 +21,18 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
   const [endDate, setEndDate] = useState(todayStr())
   const [endTime, setEndTime] = useState(nowTimeStr())
   const [category, setCategory] = useState(activeTileLabel)
-  const [operator, setOperator] = useState(project?.operators?.[0] ?? '')
+  const [operatorId, setOperatorId] = useState(project?.operators?.[0]?.id ?? '')
   const [area, setArea] = useState('')
   const [pass, setPass] = useState('')
   const [description, setDescription] = useState('')
 
   const categoryOptions = [activeTileLabel, ...(project?.delayCodes.map((c) => c.code) ?? [])]
+  const operatorOptions = (project?.operators ?? []).map((o) => ({ value: o.id, label: o.name }))
 
   function reset() {
     setStartDate(todayStr()); setStartTime(nowTimeStr())
     setEndDate(todayStr()); setEndTime(nowTimeStr())
-    setCategory(activeTileLabel); setOperator(project?.operators?.[0] ?? '')
+    setCategory(activeTileLabel); setOperatorId(project?.operators?.[0]?.id ?? '')
     setArea(''); setPass(''); setDescription('')
   }
 
@@ -40,13 +41,15 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
     const end = new Date(`${endDate}T${endTime}:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return
     const delayCode = project?.delayCodes.find((c) => c.code === category)
+    const selectedOperator = project?.operators?.find((o) => o.id === operatorId)
     onSave({
       category,
       delayCategory: delayCode?.category ?? null,
       startTime: start,
       endTime: end,
       durationMs: end - start,
-      operatorName: operator,
+      operatorName: selectedOperator?.name ?? '',
+      operatorId,
       areaL1: area,
       pass,
       description,
@@ -72,7 +75,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       <Select label="Category *" data={categoryOptions} value={category} onChange={setCategory} mb={10} allowDeselect={false} />
 
       <SimpleGrid cols={2} spacing={10} mb={10}>
-        <Select label="Operator" data={project?.operators ?? []} value={operator} onChange={setOperator} allowDeselect={false} />
+        <Select label="Operator" data={operatorOptions} value={operatorId} onChange={setOperatorId} allowDeselect={false} />
         <Select label={project?.passLabel ?? 'Pass'} data={project?.passOptions ?? []} value={pass} onChange={setPass} clearable />
       </SimpleGrid>
 

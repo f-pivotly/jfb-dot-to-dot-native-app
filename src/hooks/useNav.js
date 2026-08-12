@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchNavItems } from "../data";
+import { fetchAppResolve } from "../data";
 import { useAppConfig } from "../contexts/appConfigContext";
 import { getShellCache, setShellCache } from "../data/offlineDb";
 
@@ -8,22 +8,27 @@ const NAV_CACHE_KEY = "nav";
 export function useNav() {
   const { config } = useAppConfig();
   const [navItems, setNavItems] = useState([]);
+  const [dataAccess, setDataAccess] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [fromCache, setFromCache] = useState(false);
 
   useEffect(() => {
     if (!config.appSlug) return;
-    fetchNavItems(config.appSlug)
-      .then((data) => {
-        setNavItems(data ?? []);
+    fetchAppResolve(config.appSlug)
+      .then((resolved) => {
+        const pages = resolved?.app?.pages ?? [];
+        const access = resolved?.data_access ?? [];
+        setNavItems(pages);
+        setDataAccess(access);
         setFromCache(false);
-        setShellCache(NAV_CACHE_KEY, data ?? []);
+        setShellCache(NAV_CACHE_KEY, { pages, dataAccess: access });
       })
       .catch((err) =>
         getShellCache(NAV_CACHE_KEY).then((cached) => {
-          if (cached?.length) {
-            setNavItems(cached);
+          if (cached?.pages?.length || cached?.dataAccess?.length) {
+            setNavItems(cached.pages ?? []);
+            setDataAccess(cached.dataAccess ?? []);
             setFromCache(true);
           } else {
             setError(err.message);
@@ -39,7 +44,7 @@ export function useNav() {
     (a, b) => a.display_order - b.display_order,
   );
 
-  const defaultItem = null;
+  const defaultItem = menuItems.find((n) => n.page_slug === 'apg-jfb-dot-to-dot-daily-event') ?? null;
 
-  return { navItems, menuItems, defaultItem, loading, error, fromCache };
+  return { navItems, menuItems, defaultItem, dataAccess, loading, error, fromCache };
 }

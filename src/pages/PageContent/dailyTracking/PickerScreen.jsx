@@ -3,10 +3,6 @@ import { IconArrowLeft } from '@tabler/icons-react'
 import { COLORS, FONT_FAMILY } from './dotToDotTheme'
 import brennanLogo from '../../../assets/brennan-logo.png'
 
-// Shared list-picker layout for the Select Project / Select Equipment /
-// Who is operating? steps — Mantine components, but colored to match
-// jfb-dot-to-dot's _buildPickerScreen exactly (blue overlay, white text,
-// green "last used" highlight) rather than the shell's default theme.
 export default function PickerScreen({ title, subtitle, items, selectedId, onSelect, onBack, background = COLORS.primaryBlue, showLogo = true }) {
   return (
     <Box

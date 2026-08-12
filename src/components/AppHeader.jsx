@@ -18,7 +18,6 @@ export default function AppHeader({ menuItems = [], activeSlug, onNav, navLoadin
         zIndex: 200,
       }}
     >
-      {/* Logo */}
       <Group gap={0} mr={6} style={{ flexShrink: 0 }}>
         <Box style={{
           background: '#dc2626', color: '#fff', fontWeight: 900,
@@ -29,7 +28,6 @@ export default function AppHeader({ menuItems = [], activeSlug, onNav, navLoadin
 
       </Group>
 
-      {/* Nav items */}
       {navLoading ? (
         <Loader size={12} color="gray" ml={10} />
       ) : (
@@ -58,7 +56,6 @@ export default function AppHeader({ menuItems = [], activeSlug, onNav, navLoadin
         ))
       )}
 
-      {/* Right side */}
       <Group gap={10} ml="auto" pr={14} style={{ flexShrink: 0 }}>
         <ActionIcon variant="subtle" color="gray" size="sm">
           <IconBell size={15} color="#555" />

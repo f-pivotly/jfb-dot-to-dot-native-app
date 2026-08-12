@@ -1,8 +1,5 @@
 import { Box, Text, Group, ActionIcon } from '@mantine/core'
 
-// Shared hour/minute +/- time picker used by the shift-start, shift-end, and
-// crash-recovery screens — Mantine ActionIcon buttons, styled to match
-// jfb-dot-to-dot's translucent circular stepper on a dark background.
 export default function TimeStepper({ hours, minutes, onChange }) {
   const ampm = hours >= 12 ? 'PM' : 'AM'
   const displayH = hours % 12 || 12

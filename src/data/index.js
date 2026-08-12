@@ -73,10 +73,10 @@ api.interceptors.response.use(
   }
 )
 
-export async function fetchNavItems(appSlug) {
+export async function fetchAppResolve(appSlug) {
   const { data } = await api.get(`/native-apps/${appSlug}/resolve`)
-  console.log('Fetched nav items:', data)
-  return data?.data?.app?.pages
+  console.log('Fetched app resolve:', data)
+  return data?.data
 }
 
 export async function fetchPageDetails(appSlug, pageSlug) {
