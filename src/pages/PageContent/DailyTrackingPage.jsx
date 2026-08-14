@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Box, Text, Group, Button, Select, Textarea, ActionIcon, ScrollArea, UnstyledButton, Image, Badge } from '@mantine/core'
+import { useState, useEffect, useCallback } from 'react'
+import { Box, Text, Group, Button, Select, Textarea, ActionIcon, ScrollArea, UnstyledButton, Image, Badge, Modal } from '@mantine/core'
 import { IconStar, IconStarFilled, IconPlayerStopFilled, IconTrash, IconUserCircle, IconPlus } from '@tabler/icons-react'
 import PickerScreen from './dailyTracking/PickerScreen'
 import TimeStepper from './dailyTracking/TimeStepper'
@@ -8,6 +8,8 @@ import AddPastSessionModal from './dailyTracking/AddPastSessionModal'
 import { COLORS, CATEGORY_COLORS, FONT_FAMILY } from './dailyTracking/dotToDotTheme'
 import { getProjectExtras } from '../../data/dailyTrackingSampleData'
 import { useDomainData } from '../../hooks/useDomainData'
+import { useCachedDomainData } from '../../hooks/useCachedDomainData'
+import { enqueueSync, getAllQueueItems, deleteQueueItem } from '../../data/offlineDb'
 import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from '../../assets/brennan-logo.png'
 
@@ -46,18 +48,28 @@ function formatTimeOfDay(date) {
 async function saveDailyActivity(createFn, {
   projectId, equipmentId, operatorId, sessionId, startTime, endTime,
 }) {
+  const recordData = {
+    project_id: projectId,
+    equipment_id: equipmentId,
+    operator_id: operatorId,
+    session_id: sessionId,
+    start_date_time: startTime.toISOString(),
+    end_date_time: endTime.toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }
   try {
-    await createFn({
-      project_id: projectId,
-      equipment_id: equipmentId,
-      operator_id: operatorId,
-      session_id: sessionId,
-      start_date_time: startTime.toISOString(),
-      end_date_time: endTime.toISOString(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    })
+    await createFn(recordData)
   } catch (err) {
-    console.warn('daily_activities save failed (session kept locally):', err)
+    console.warn('daily_activities save failed, queued for retry:', err)
+    await enqueueSync({
+      local_id: crypto.randomUUID(),
+      domain: 'jfb_daily_activities',
+      operation: 'create',
+      recordData,
+      createdAt: Date.now(),
+    }).catch((queueErr) => {
+      console.warn('daily_activities queueing also failed (session kept on-screen only):', queueErr)
+    })
   }
 }
 
@@ -73,23 +85,54 @@ function readRecovery() {
 }
 
 export default function DailyTrackingPage({ domainSources = [] }) {
-  const projectsSource = findDomainSource(domainSources, 'projects')
-  const operatorsSource = findDomainSource(domainSources, 'operators')
-  const equipmentsSource = findDomainSource(domainSources, 'equipments')
-  const dailyActivitiesSource = findDomainSource(domainSources, 'daily_activities')
+  const projectsSource = findDomainSource(domainSources, 'jfb_projects')
+  const operatorsSource = findDomainSource(domainSources, 'jfb_operators')
+  const equipmentsSource = findDomainSource(domainSources, 'jfb_equipments')
+  const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
+  const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
+  const areaLevelsSource = findDomainSource(domainSources, 'jfb_project_area_levels')
 
-  const { records: projectRecords, loading: projectsLoading } = useDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
-  const { records: operatorRecords } = useDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
-  const { records: equipmentRecords } = useDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
+  const { records: projectRecords, loading: projectsLoading, offline: projectsOffline } = useCachedDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
+  const { records: operatorRecords } = useCachedDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
+  const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
+  const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
+  const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
+
   const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
-  const projects = projectRecords.map((p) => ({
-    id: p.project_id,
-    name: p.name,
-    equipment: equipmentRecords.filter((e) => e.project_id === p.project_id).map((e) => ({ id: e.equipment_id, name: e.name })),
-    operators: operatorRecords.filter((o) => o.project_id === p.project_id).map((o) => ({ id: o.operator_id, name: o.name })),
-    ...getProjectExtras(p.name),
-  }))
+  const projects = projectRecords.map((p) => {
+    const extras = getProjectExtras(p.name)
+
+    const levels = areaLevelRecords.filter((l) => l.project_id === p.id)
+    const level1 = levels.find((l) => l.depth === 1)
+    const level2 = levels.find((l) => l.depth === 2)
+    const level3 = levels.find((l) => l.depth === 3)
+    const depthByLevelId = new Map(levels.map((l) => [l.id, l.depth]))
+    const areasFlat = areaRecords
+      .filter((a) => a.project_id === p.id)
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        parent_id: a.parent_id ?? null,
+        depth: depthByLevelId.get(a.area_level_id) ?? null,
+        sort_order: a.sort_order ?? 0,
+      }))
+      .sort((a, b) => a.sort_order - b.sort_order)
+    const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
+
+    return {
+      id: p.id,
+      name: p.name,
+      equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({ id: e.id, name: e.name })),
+      operators: operatorRecords.filter((o) => o.project_id === p.id).map((o) => ({ id: o.id, name: o.name })),
+      ...extras,
+      ...(level1 ? { areaLabel: level1.label } : {}),
+      ...(level2 ? { subAreaLabel: level2.label } : {}),
+      ...(level3 ? { subSubAreaLabel: level3.label } : {}),
+      ...(level1AreaNames.length ? { areas: level1AreaNames } : {}),
+      areasFlat,
+    }
+  })
 
   const [recovery] = useState(readRecovery)
   const recoveredProject = recovery ? projects.find((p) => p.id === recovery.projectId) : null
@@ -111,8 +154,13 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [activeSession, setActiveSession] = useState(null)
   const [favoritesByProject, setFavoritesByProject] = useState({})
   const [now, setNow] = useState(() => Date.now())
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
+  const [pendingItems, setPendingItems] = useState([])
+  const [syncModalOpen, setSyncModalOpen] = useState(false)
 
   const [areaValue, setAreaValue] = useState('')
+  const [subAreaValue, setSubAreaValue] = useState('')
+  const [subSubAreaValue, setSubSubAreaValue] = useState('')
   const [passValue, setPassValue] = useState('')
   const [notes, setNotes] = useState('')
   const [lastLane, setLastLane] = useState('')
@@ -138,12 +186,71 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     return () => clearInterval(id)
   }, [activeSession])
 
+  const drainQueue = useCallback(async () => {
+    const items = await getAllQueueItems().catch(() => [])
+    const ours = items.filter((item) => item.domain === 'jfb_daily_activities')
+    setPendingItems(ours)
+    setPendingSyncCount(ours.length)
+    if (!navigator.onLine || !createDailyActivity) return
+    for (const item of ours) {
+      try {
+        await createDailyActivity(item.recordData)
+        await deleteQueueItem(item.local_id)
+        setPendingItems((prev) => prev.filter((i) => i.local_id !== item.local_id))
+        setPendingSyncCount((n) => Math.max(0, n - 1))
+      } catch {
+        // Still offline or still failing -- leave it queued, retry next tick.
+      }
+    }
+  }, [createDailyActivity])
+
+  useEffect(() => {
+
+    const kickoffId = setTimeout(drainQueue, 0)
+    const intervalId = setInterval(drainQueue, 30000)
+    window.addEventListener('online', drainQueue)
+    return () => {
+      clearTimeout(kickoffId)
+      clearInterval(intervalId)
+      window.removeEventListener('online', drainQueue)
+    }
+  }, [drainQueue])
+
   const favorites = (project && favoritesByProject[project.id]) || []
+
+  const areaOptions = project?.areasFlat?.length
+    ? project.areasFlat.filter((a) => a.depth === 1).map((a) => ({ value: a.id, label: a.name }))
+    : (project?.areas || [])
+  const subAreaOptions = (project?.areasFlat || [])
+    .filter((a) => a.depth === 2 && a.parent_id === areaValue)
+    .map((a) => ({ value: a.id, label: a.name }))
+  const subSubAreaOptions = (project?.areasFlat || [])
+    .filter((a) => a.depth === 3 && a.parent_id === subAreaValue)
+    .map((a) => ({ value: a.id, label: a.name }))
+  const showSubArea = !!project?.subAreaLabel && (project?.areasFlat || []).some((a) => a.depth === 2)
+  const showSubSubArea = !!project?.subSubAreaLabel && (project?.areasFlat || []).some((a) => a.depth === 3)
+
+  function labelForAreaValue(options, value) {
+    if (!value) return ''
+    const opt = options.find((o) => (typeof o === 'string' ? o === value : o.value === value))
+    if (!opt) return value
+    return typeof opt === 'string' ? opt : opt.label
+  }
+
+  function handleAreaChange(v) {
+    setAreaValue(v ?? '')
+    setSubAreaValue('')
+    setSubSubAreaValue('')
+  }
+  function handleSubAreaChange(v) {
+    setSubAreaValue(v ?? '')
+    setSubSubAreaValue('')
+  }
 
   function selectProject(item) {
     const proj = projects.find((p) => p.id === item.id)
     setProject(proj)
-    setAreaValue(''); setPassValue('')
+    setAreaValue(''); setSubAreaValue(''); setSubSubAreaValue(''); setPassValue('')
     if (proj.equipment.length === 1) {
       setEquipment(proj.equipment[0].name)
       setEquipmentId(proj.equipment[0].id)
@@ -187,6 +294,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       activity: session.activity,
       startTimeISO: session.startTime.toISOString(),
       areaL1: session.areaL1,
+      areaL2: session.areaL2,
+      areaL3: session.areaL3,
       pass: session.pass,
       notes: session.notes,
       lane: session.lane,
@@ -207,6 +316,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         durationMs: end - cur.startTime,
         operatorName: operator,
         areaL1: cur.areaL1,
+        areaL2: cur.areaL2,
+        areaL3: cur.areaL3,
         pass: cur.pass,
         description: cur.notes,
         lane: cur.lane,
@@ -230,7 +341,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     const session = {
       activity,
       startTime: new Date(),
-      areaL1: areaValue,
+      areaL1: labelForAreaValue(areaOptions, areaValue),
+      areaL2: labelForAreaValue(subAreaOptions, subAreaValue),
+      areaL3: labelForAreaValue(subSubAreaOptions, subSubAreaValue),
       pass: passValue,
       notes,
       lane: lane || '',
@@ -323,7 +436,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       category: recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code,
       delayCategory: recoveryData.activity.active ? null : recoveryData.activity.category,
       startTime: start, endTime: end, durationMs: end - start,
-      operatorName: recoveryData.operator, areaL1: recoveryData.areaL1, pass: recoveryData.pass,
+      operatorName: recoveryData.operator,
+      areaL1: recoveryData.areaL1, areaL2: recoveryData.areaL2, areaL3: recoveryData.areaL3,
+      pass: recoveryData.pass,
       description: recoveryData.notes, lane: recoveryData.lane, step: recoveryData.step,
     }, ...prev])
     localStorage.removeItem(RECOVERY_KEY)
@@ -408,7 +523,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     return (
       <PickerScreen
         title="Select Project"
-        subtitle={projectsLoading ? 'Loading projects…' : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        subtitle={projectsLoading ? 'Loading projects…' : projectsOffline ? 'Offline — showing last-synced projects' : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
         items={projects.map((p) => ({ id: p.id, label: p.name }))}
         selectedId={project?.id}
         onSelect={selectProject}
@@ -530,6 +645,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
               >
                 <IconPlus size={18} />
               </ActionIcon>
+              <Button
+                style={{ background: pendingSyncCount > 0 ? (COLORS.warningBorder ?? '#d97706') : 'rgba(255,255,255,0.15)', color: '#fff' }}
+                onClick={() => setSyncModalOpen(true)}
+              >
+                {pendingSyncCount > 0 ? `⏳ ${pendingSyncCount} Pending` : '✓ Synced'}
+              </Button>
               <Button style={{ background: COLORS.primaryBlue }} onClick={() => setShiftEndOpen(true)}>
                 End of Day
               </Button>
@@ -541,9 +662,16 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           <Text size="xs" fw={600} c={activeIsRunning ? COLORS.secondaryGreen : COLORS.textMedium}>
             {activeIsRunning ? `● Recording: ${activityLabel(activeSession.activity, project)}` : '● Ready - Tap a category to start'}
           </Text>
-          <Badge style={{ background: COLORS.primaryBlue, color: '#fff' }} radius="xl">
-            {sessions.length} session{sessions.length === 1 ? '' : 's'}
-          </Badge>
+          <Group gap={8}>
+            {projectsOffline && (
+              <Badge style={{ background: COLORS.warningBorder ?? '#d97706', color: '#fff' }} radius="xl">
+                ⚠ Offline
+              </Badge>
+            )}
+            <Badge style={{ background: COLORS.primaryBlue, color: '#fff' }} radius="xl">
+              {sessions.length} session{sessions.length === 1 ? '' : 's'}
+            </Badge>
+          </Group>
         </Group>
 
         {activeIsRunning && (
@@ -559,7 +687,13 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         )}
 
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
-          <Select label={project.areaLabel} data={project.areas} value={areaValue} onChange={(v) => setAreaValue(v ?? '')} clearable size="xs" style={{ width: 160 }} />
+          <Select label={project.areaLabel} data={areaOptions} value={areaValue} onChange={handleAreaChange} clearable size="xs" style={{ width: 160 }} />
+          {showSubArea && (
+            <Select label={project.subAreaLabel} data={subAreaOptions} value={subAreaValue} onChange={handleSubAreaChange} clearable size="xs" style={{ width: 160 }} />
+          )}
+          {showSubSubArea && (
+            <Select label={project.subSubAreaLabel} data={subSubAreaOptions} value={subSubAreaValue} onChange={(v) => setSubSubAreaValue(v ?? '')} clearable size="xs" style={{ width: 160 }} />
+          )}
           <Select label={project.passLabel} data={project.passOptions} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
         </Group>
@@ -628,7 +762,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
                   </Text>
                   <Text size="xs" c={COLORS.textMedium}>
                     {formatTimeOfDay(s.startTime)}–{formatTimeOfDay(s.endTime)} · {s.operatorName}
-                    {s.areaL1 ? ` · ${s.areaL1}` : ''}{s.pass ? ` · ${s.pass}` : ''}
+                    {s.areaL1 ? ` · ${s.areaL1}` : ''}{s.areaL2 ? ` · ${s.areaL2}` : ''}{s.areaL3 ? ` · ${s.areaL3}` : ''}{s.pass ? ` · ${s.pass}` : ''}
                   </Text>
                 </Box>
                 <Text size="sm" fw={700} c={COLORS.primaryBlue} style={{ flexShrink: 0 }}>{formatDuration(s.durationMs)}</Text>
@@ -665,6 +799,42 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           })
         }}
       />
+
+      <Modal opened={syncModalOpen} onClose={() => setSyncModalOpen(false)} title={<Text fw={700} size="sm">Sync Status</Text>} size="sm">
+        <Group justify="space-between" mb={8}>
+          <Text size="sm" c={COLORS.textMedium}>Synced this shift</Text>
+          <Text size="sm" fw={700} c={COLORS.secondaryGreen}>{Math.max(0, sessions.length - pendingSyncCount)}</Text>
+        </Group>
+        <Group justify="space-between" mb={16}>
+          <Text size="sm" c={COLORS.textMedium}>Pending sync</Text>
+          <Text size="sm" fw={700} c={pendingSyncCount > 0 ? (COLORS.warningBorder ?? '#d97706') : COLORS.secondaryGreen}>{pendingSyncCount}</Text>
+        </Group>
+
+        {pendingItems.length === 0 ? (
+          <Text size="xs" c={COLORS.textLight} ta="center" py={10}>✓ Everything is synced.</Text>
+        ) : (
+          <Box mb={12}>
+            {pendingItems.map((item) => (
+              <Group key={item.local_id} justify="space-between" wrap="nowrap" p={8} mb={6} style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8 }}>
+                <Box style={{ minWidth: 0 }}>
+                  <Text size="xs" fw={600} truncate>
+                    {formatTimeOfDay(new Date(item.recordData.start_date_time))}–{formatTimeOfDay(new Date(item.recordData.end_date_time))}
+                  </Text>
+                  <Text size="10px" c={COLORS.textLight}>Queued {new Date(item.createdAt).toLocaleTimeString()}</Text>
+                </Box>
+                <Badge style={{ background: COLORS.warningBg ?? '#fef3c7', color: COLORS.warningText ?? '#92400e', flexShrink: 0 }}>Pending</Badge>
+              </Group>
+            ))}
+          </Box>
+        )}
+
+        <Group justify="flex-end">
+          <Button variant="default" size="xs" onClick={() => setSyncModalOpen(false)}>Close</Button>
+          {pendingSyncCount > 0 && (
+            <Button size="xs" style={{ background: COLORS.primaryBlue }} onClick={drainQueue}>Retry Now</Button>
+          )}
+        </Group>
+      </Modal>
 
       {shiftEndOpen && (
         <Box style={{ position: 'fixed', inset: 0, background: COLORS.shiftEndBg, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>

@@ -23,17 +23,48 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
   const [category, setCategory] = useState(activeTileLabel)
   const [operatorId, setOperatorId] = useState(project?.operators?.[0]?.id ?? '')
   const [area, setArea] = useState('')
+  const [subArea, setSubArea] = useState('')
+  const [subSubArea, setSubSubArea] = useState('')
   const [pass, setPass] = useState('')
   const [description, setDescription] = useState('')
 
   const categoryOptions = [activeTileLabel, ...(project?.delayCodes.map((c) => c.code) ?? [])]
   const operatorOptions = (project?.operators ?? []).map((o) => ({ value: o.id, label: o.name }))
 
+  const areaOptions = project?.areasFlat?.length
+    ? project.areasFlat.filter((a) => a.depth === 1).map((a) => ({ value: a.id, label: a.name }))
+    : (project?.areas ?? [])
+  const subAreaOptions = (project?.areasFlat ?? [])
+    .filter((a) => a.depth === 2 && a.parent_id === area)
+    .map((a) => ({ value: a.id, label: a.name }))
+  const subSubAreaOptions = (project?.areasFlat ?? [])
+    .filter((a) => a.depth === 3 && a.parent_id === subArea)
+    .map((a) => ({ value: a.id, label: a.name }))
+  const showSubArea = !!project?.subAreaLabel && (project?.areasFlat ?? []).some((a) => a.depth === 2)
+  const showSubSubArea = !!project?.subSubAreaLabel && (project?.areasFlat ?? []).some((a) => a.depth === 3)
+
+  function labelForValue(options, value) {
+    if (!value) return ''
+    const opt = options.find((o) => (typeof o === 'string' ? o === value : o.value === value))
+    if (!opt) return value
+    return typeof opt === 'string' ? opt : opt.label
+  }
+
+  function handleAreaChange(v) {
+    setArea(v ?? '')
+    setSubArea('')
+    setSubSubArea('')
+  }
+  function handleSubAreaChange(v) {
+    setSubArea(v ?? '')
+    setSubSubArea('')
+  }
+
   function reset() {
     setStartDate(todayStr()); setStartTime(nowTimeStr())
     setEndDate(todayStr()); setEndTime(nowTimeStr())
     setCategory(activeTileLabel); setOperatorId(project?.operators?.[0]?.id ?? '')
-    setArea(''); setPass(''); setDescription('')
+    setArea(''); setSubArea(''); setSubSubArea(''); setPass(''); setDescription('')
   }
 
   function handleSave() {
@@ -50,7 +81,9 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       durationMs: end - start,
       operatorName: selectedOperator?.name ?? '',
       operatorId,
-      areaL1: area,
+      areaL1: labelForValue(areaOptions, area),
+      areaL2: labelForValue(subAreaOptions, subArea),
+      areaL3: labelForValue(subSubAreaOptions, subSubArea),
       pass,
       description,
     })
@@ -79,7 +112,15 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
         <Select label={project?.passLabel ?? 'Pass'} data={project?.passOptions ?? []} value={pass} onChange={setPass} clearable />
       </SimpleGrid>
 
-      <Select label={project?.areaLabel ?? 'Area'} data={project?.areas ?? []} value={area} onChange={setArea} clearable mb={10} />
+      <SimpleGrid cols={1 + (showSubArea ? 1 : 0) + (showSubSubArea ? 1 : 0)} spacing={10} mb={10}>
+        <Select label={project?.areaLabel ?? 'Area'} data={areaOptions} value={area} onChange={handleAreaChange} clearable />
+        {showSubArea && (
+          <Select label={project.subAreaLabel} data={subAreaOptions} value={subArea} onChange={handleSubAreaChange} clearable />
+        )}
+        {showSubSubArea && (
+          <Select label={project.subSubAreaLabel} data={subSubAreaOptions} value={subSubArea} onChange={(v) => setSubSubArea(v ?? '')} clearable />
+        )}
+      </SimpleGrid>
 
       <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} rows={2} mb={20} />
 

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { requestNewToken, setAuthToken } from '../helpers/PivotlyHelpers'
 
-const IS_LOCAL = true
+const IS_LOCAL = false
 
 function resolveApiBase() {
   const runtimeConfig = window.__PIVOTLY_RUNTIME_CONFIG__;
@@ -75,13 +75,11 @@ api.interceptors.response.use(
 
 export async function fetchAppResolve(appSlug) {
   const { data } = await api.get(`/native-apps/${appSlug}/resolve`)
-  console.log('Fetched app resolve:', data)
   return data?.data
 }
 
 export async function fetchPageDetails(appSlug, pageSlug) {
   const { data } = await api.get(`/native-apps/${appSlug}/pages/${pageSlug}/resolve`)
-  console.log('Fetched page details:', data)
   return data
 }
 export async function fetchPicklistValues(slug) {
@@ -101,18 +99,6 @@ export async function fetchDomainRecords({ domain, system, appSlug, limit = 25, 
     },
   })
   return data
-}
-
-export function readTotalRecords(res) {
-  return res?.pagination?.total_records ?? res?.meta?.total_records ?? 0
-}
-export async function fetchDomainRecordCount({ domain, system, appSlug, filters }) {
-  const res = await fetchDomainRecords({
-    domain, system, appSlug, filters,
-    limit: 1, offset: 0,
-    countMode: 'auto', forceMeta: true,
-  })
-  return readTotalRecords(res)
 }
 
 export async function createDomainRecord({ domain, system, appSlug, recordData }) {

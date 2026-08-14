@@ -2,10 +2,8 @@ import { Box, Text, Loader, Center } from "@mantine/core";
 import { IconRefresh } from "@tabler/icons-react";
 import SafeError from "../../components/SafeError";
 import FallbackPage from "./FallbackPage";
-import CrewRosterPage from "./CrewRosterPage";
 import DailyTrackingPage from "./DailyTrackingPage";
 
-const CREW_ROSTER_PAGE_SLUG = "apg-ofa_person";
 const DAILY_TRACKING_PAGE_SLUG = "apg-jfb-dot-to-dot-daily-event";
 
 export default function PageContent({
@@ -97,17 +95,6 @@ export default function PageContent({
     { key: "claims", title: "Claims", data: claims },
     { key: "actions", title: "Actions", data: actions },
   ];
-
-  if (slug === CREW_ROSTER_PAGE_SLUG) {
-    const personSource = domainSources[0];
-    return (
-      <CrewRosterPage
-        domain={personSource?.domain}
-        system={personSource?.system}
-        actions={actions}
-      />
-    );
-  }
 
   if (slug === DAILY_TRACKING_PAGE_SLUG) {
     return <DailyTrackingPage domainSources={domainSources} actions={actions} />;
