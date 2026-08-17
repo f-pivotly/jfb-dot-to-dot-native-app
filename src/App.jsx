@@ -2,11 +2,11 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Box, Text, Loader, Center } from "@mantine/core";
 import PageContent from "./pages/PageContent";
-import DailyTrackingPage from "./pages/PageContent/DailyTrackingPage";
+import DailyTrackingPage from "./pages/PageContent/dailyTracking/DailyTrackingPage";
 
 import { useNav } from "./hooks/useNav";
 import { usePageDetails } from "./hooks/usePageDetails";
-import { useAppConfig } from "./contexts/appConfigContext";
+import { useAppConfig } from "./contexts/pivotlyAppConfigContext";
 import { usePicklistCatalog } from "./hooks/usePicklistCatalog";
 import { REQUIRED_PICKLISTS } from "./config/requiredPicklists";
 import { SAMPLE_MODE } from "./config/sampleMode";

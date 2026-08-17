@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchDomainRecords, createDomainRecord, updateDomainRecord, deleteDomainRecord } from '../data'
-import { useAppConfig } from '../contexts/appConfigContext'
+import { useAppConfig } from '../contexts/pivotlyAppConfigContext'
 
 export function useDomainData({ domain, system }) {
   const { config } = useAppConfig()

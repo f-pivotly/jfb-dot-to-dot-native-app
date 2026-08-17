@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchAppResolve } from "../data";
-import { useAppConfig } from "../contexts/appConfigContext";
+import { useAppConfig } from "../contexts/pivotlyAppConfigContext";
 import { getShellCache, setShellCache } from "../data/offlineDb";
 
 const NAV_CACHE_KEY = "nav";

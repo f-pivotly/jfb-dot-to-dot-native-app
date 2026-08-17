@@ -5,9 +5,9 @@ import {
   useMemo,
 } from "react";
 import { api, applyAuthToken, applyAppSlug } from "../data";
-import { onTokenUpdated, requestNewToken } from "../helpers/PivotlyHelpers";
+import { onTokenUpdated, requestNewToken } from "../helpers/pivotlyHelpers";
 import { getShellCache, setShellCache } from "../data/offlineDb";
-import { AppConfigContext, decodeJwtUser, MSG } from "./appConfigContext";
+import { AppConfigContext, decodeJwtUser, MSG } from "./pivotlyAppConfigContext";
 
 const CONFIG_HANDSHAKE_TIMEOUT_MS = 3000;
 

@@ -1,5 +1,5 @@
 import { Box, ScrollArea } from "@mantine/core";
-import DomainDataTable from "../../components/DomainDataTable";
+import DomainDataTable from "../../../components/DomainDataTable";
 import Section from "./Section";
 import PageIdentityBar from "./PageIdentityBar";
 

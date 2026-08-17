@@ -1,8 +1,8 @@
 import { Box, Text, Loader, Center } from "@mantine/core";
 import { IconRefresh } from "@tabler/icons-react";
 import SafeError from "../../components/SafeError";
-import FallbackPage from "./FallbackPage";
-import DailyTrackingPage from "./DailyTrackingPage";
+import FallbackPage from "./fallback/FallbackPage";
+import DailyTrackingPage from "./dailyTracking/DailyTrackingPage";
 
 const DAILY_TRACKING_PAGE_SLUG = "apg-jfb-dot-to-dot-daily-event";
 

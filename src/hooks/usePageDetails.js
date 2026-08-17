@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { fetchPageDetails } from "../data";
-import { useAppConfig } from "../contexts/appConfigContext";
+import { useAppConfig } from "../contexts/pivotlyAppConfigContext";
 import { getShellCache, setShellCache } from "../data/offlineDb";
 
 const pageCacheKey = (pageSlug) => `page_resolve:${pageSlug}`;

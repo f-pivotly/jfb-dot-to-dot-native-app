@@ -1,7 +1,7 @@
 import { Box, Text, Button, UnstyledButton, Image, ScrollArea } from '@mantine/core'
 import TimeStepper from './TimeStepper'
 import { COLORS, FONT_FAMILY } from '../../../theme'
-import brennanLogo from '../../../assets/brennan-logo.png'
+import brennanLogo from './assets/brennan-logo.png'
 
 export default function ShiftStartScreen({ operator, equipment, shiftTime, onChangeShiftTime, onConfirm, onSkip }) {
   return (

@@ -1,4 +1,4 @@
-import { getProjectExtras } from '../../../data/dailyTrackingSampleData'
+import { getProjectExtras } from './dailyTrackingSampleData'
 
 export function buildProjects({ projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords }) {
   return projectRecords.map((p) => {

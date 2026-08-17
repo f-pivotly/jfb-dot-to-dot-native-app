@@ -1,4 +1,4 @@
-import { useDomainData } from './useDomainData'
+import { useDomainData } from '../../../hooks/useDomainData'
 
 export function useProjectAreas(projectId) {
   const { records, loading, error, creating, updating, deleting, create, update, remove } =

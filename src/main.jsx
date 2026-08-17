@@ -5,7 +5,7 @@ import "@mantine/core/styles.css";
 import "./theme/fonts.css";
 import { theme } from "./theme";
 import App from "./App";
-import { PivotlyAppConfigProvider } from "./contexts/PivotlyAppConfigContext";
+import { PivotlyAppConfigProvider } from "./contexts/PivotlyAppConfigProvider";
 
 const router = createMemoryRouter([{ path: "*", element: <App /> }]);
 
