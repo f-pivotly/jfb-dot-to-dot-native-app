@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Modal, TextInput, Button, Text } from '@mantine/core'
-import { COLORS } from './dotToDotTheme'
+import { COLORS } from '../../../theme'
 
 const modalStyles = {
   header: { background: COLORS.primaryBlue, color: COLORS.white },

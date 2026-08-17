@@ -1,6 +1,6 @@
 import { Box, Text, Stack, UnstyledButton, Badge, Image } from '@mantine/core'
 import { IconArrowLeft } from '@tabler/icons-react'
-import { COLORS, FONT_FAMILY } from './dotToDotTheme'
+import { COLORS, FONT_FAMILY } from '../../../theme'
 import brennanLogo from '../../../assets/brennan-logo.png'
 
 export default function PickerScreen({ title, subtitle, items, selectedId, onSelect, onBack, background = COLORS.primaryBlue, showLogo = true }) {

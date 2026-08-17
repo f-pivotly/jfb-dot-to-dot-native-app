@@ -1,88 +1,27 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Box, Text, Group, Button, Select, Textarea, ActionIcon, ScrollArea, UnstyledButton, Image, Badge, Modal } from '@mantine/core'
-import { IconStar, IconStarFilled, IconPlayerStopFilled, IconTrash, IconUserCircle, IconPlus } from '@tabler/icons-react'
+import { useState, useEffect } from 'react'
+import { Box, Text, Group, Button, Select, Textarea, ActionIcon, ScrollArea, UnstyledButton, Image, Badge } from '@mantine/core'
+import { IconPlayerStopFilled, IconTrash, IconUserCircle, IconPlus } from '@tabler/icons-react'
 import PickerScreen from './dailyTracking/PickerScreen'
-import TimeStepper from './dailyTracking/TimeStepper'
 import LaneStepModal from './dailyTracking/LaneStepModal'
 import AddPastSessionModal from './dailyTracking/AddPastSessionModal'
-import { COLORS, CATEGORY_COLORS, FONT_FAMILY } from './dailyTracking/dotToDotTheme'
-import { getProjectExtras } from '../../data/dailyTrackingSampleData'
+import TileButton from './dailyTracking/TileButton'
+import SessionInterruptedScreen from './dailyTracking/SessionInterruptedScreen'
+import ShiftStartScreen from './dailyTracking/ShiftStartScreen'
+import ConfirmSetupScreen from './dailyTracking/ConfirmSetupScreen'
+import ShiftEndOverlay from './dailyTracking/ShiftEndOverlay'
+import SyncStatusModal from './dailyTracking/SyncStatusModal'
+import { COLORS, FONT_FAMILY } from '../../theme'
+import { activeTileLabel, activityLabel, groupColor, formatClock, formatDuration, formatTimeOfDay } from './dailyTracking/dailyTrackingFormat'
+import { writeRecovery, clearRecovery } from './dailyTracking/recoverySession'
+import { saveDailyActivity } from './dailyTracking/saveDailyActivity'
+import { buildProjects } from './dailyTracking/projectsViewModel'
+import { useAreaCascade } from './dailyTracking/useAreaCascade'
+import { useOfflineSyncQueue } from './dailyTracking/useOfflineSyncQueue'
+import { useCrashRecovery } from './dailyTracking/useCrashRecovery'
 import { useDomainData } from '../../hooks/useDomainData'
 import { useCachedDomainData } from '../../hooks/useCachedDomainData'
-import { enqueueSync, getAllQueueItems, deleteQueueItem } from '../../data/offlineDb'
 import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from '../../assets/brennan-logo.png'
-
-const RECOVERY_KEY = 'dtd_active_session_v1'
-
-function activeTileLabel(project) {
-  return project.workType === 'capping' ? 'ACTIVE CAPPING' : 'ACTIVE DREDGING'
-}
-function activityLabel(activity, project) {
-  return activity.active ? activeTileLabel(project) : activity.code
-}
-function groupColor(project, category) {
-  if (!category) return COLORS.secondaryGreen
-  const cats = []
-  project.delayCodes.forEach((c) => { if (!cats.includes(c.category)) cats.push(c.category) })
-  const idx = cats.indexOf(category)
-  return idx < 0 ? CATEGORY_COLORS[0] : CATEGORY_COLORS[idx % CATEGORY_COLORS.length]
-}
-function formatClock(ms) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000))
-  const h = String(Math.floor(totalSec / 3600)).padStart(2, '0')
-  const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0')
-  const s = String(totalSec % 60).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
-function formatDuration(ms) {
-  const totalMin = Math.round(ms / 60000)
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
-function formatTimeOfDay(date) {
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-}
-
-async function saveDailyActivity(createFn, {
-  projectId, equipmentId, operatorId, sessionId, startTime, endTime,
-}) {
-  const recordData = {
-    project_id: projectId,
-    equipment_id: equipmentId,
-    operator_id: operatorId,
-    session_id: sessionId,
-    start_date_time: startTime.toISOString(),
-    end_date_time: endTime.toISOString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  }
-  try {
-    await createFn(recordData)
-  } catch (err) {
-    console.warn('daily_activities save failed, queued for retry:', err)
-    await enqueueSync({
-      local_id: crypto.randomUUID(),
-      domain: 'jfb_daily_activities',
-      operation: 'create',
-      recordData,
-      createdAt: Date.now(),
-    }).catch((queueErr) => {
-      console.warn('daily_activities queueing also failed (session kept on-screen only):', queueErr)
-    })
-  }
-}
-
-function readRecovery() {
-  try {
-    const raw = localStorage.getItem(RECOVERY_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
-    localStorage.removeItem(RECOVERY_KEY)
-    return null
-  }
-}
 
 export default function DailyTrackingPage({ domainSources = [] }) {
   const projectsSource = findDomainSource(domainSources, 'jfb_projects')
@@ -100,50 +39,17 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
-  const projects = projectRecords.map((p) => {
-    const extras = getProjectExtras(p.name)
+  const projects = buildProjects({ projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords })
 
-    const levels = areaLevelRecords.filter((l) => l.project_id === p.id)
-    const level1 = levels.find((l) => l.depth === 1)
-    const level2 = levels.find((l) => l.depth === 2)
-    const level3 = levels.find((l) => l.depth === 3)
-    const depthByLevelId = new Map(levels.map((l) => [l.id, l.depth]))
-    const areasFlat = areaRecords
-      .filter((a) => a.project_id === p.id)
-      .map((a) => ({
-        id: a.id,
-        name: a.name,
-        parent_id: a.parent_id ?? null,
-        depth: depthByLevelId.get(a.area_level_id) ?? null,
-        sort_order: a.sort_order ?? 0,
-      }))
-      .sort((a, b) => a.sort_order - b.sort_order)
-    const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
+  const crashRecovery = useCrashRecovery(projects)
 
-    return {
-      id: p.id,
-      name: p.name,
-      equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({ id: e.id, name: e.name })),
-      operators: operatorRecords.filter((o) => o.project_id === p.id).map((o) => ({ id: o.id, name: o.name })),
-      ...extras,
-      ...(level1 ? { areaLabel: level1.label } : {}),
-      ...(level2 ? { subAreaLabel: level2.label } : {}),
-      ...(level3 ? { subSubAreaLabel: level3.label } : {}),
-      ...(level1AreaNames.length ? { areas: level1AreaNames } : {}),
-      areasFlat,
-    }
-  })
-
-  const [recovery] = useState(readRecovery)
-  const recoveredProject = recovery ? projects.find((p) => p.id === recovery.projectId) : null
-
-  const [step, setStep] = useState(recovery ? 'sessionInterrupted' : 'project')
+  const [step, setStep] = useState(crashRecovery.recovery ? 'sessionInterrupted' : 'project')
   const [project, setProject] = useState(null)
-  const [equipment, setEquipment] = useState(recovery?.equipment ?? null)
-  const [equipmentId, setEquipmentId] = useState(recovery?.equipmentId ?? null)
-  const [operator, setOperator] = useState(recovery?.operator ?? null)
-  const [operatorId, setOperatorId] = useState(recovery?.operatorId ?? null)
-  const [sessionId, setSessionId] = useState(recovery?.sessionId ?? null)
+  const [equipment, setEquipment] = useState(crashRecovery.recovery?.equipment ?? null)
+  const [equipmentId, setEquipmentId] = useState(crashRecovery.recovery?.equipmentId ?? null)
+  const [operator, setOperator] = useState(crashRecovery.recovery?.operator ?? null)
+  const [operatorId, setOperatorId] = useState(crashRecovery.recovery?.operatorId ?? null)
+  const [sessionId, setSessionId] = useState(crashRecovery.recovery?.sessionId ?? null)
   const [shiftStart, setShiftStart] = useState(null)
   const [shiftTime, setShiftTime] = useState(() => {
     const d = new Date()
@@ -154,13 +60,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [activeSession, setActiveSession] = useState(null)
   const [favoritesByProject, setFavoritesByProject] = useState({})
   const [now, setNow] = useState(() => Date.now())
-  const [pendingSyncCount, setPendingSyncCount] = useState(0)
-  const [pendingItems, setPendingItems] = useState([])
   const [syncModalOpen, setSyncModalOpen] = useState(false)
 
-  const [areaValue, setAreaValue] = useState('')
-  const [subAreaValue, setSubAreaValue] = useState('')
-  const [subSubAreaValue, setSubSubAreaValue] = useState('')
+  const areaCascade = useAreaCascade(project)
   const [passValue, setPassValue] = useState('')
   const [notes, setNotes] = useState('')
   const [lastLane, setLastLane] = useState('')
@@ -174,11 +76,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     const d = new Date()
     return { hours: d.getHours(), minutes: d.getMinutes() }
   })
-  const [recoveryData, setRecoveryData] = useState(recovery)
-  const [recoveryEndTime, setRecoveryEndTime] = useState(() => {
-    const rounded = new Date(Math.round(Date.now() / 300000) * 300000)
-    return { hours: rounded.getHours(), minutes: rounded.getMinutes() }
-  })
+
+  const { pendingSyncCount, pendingItems, drainQueue } = useOfflineSyncQueue({ createDailyActivity })
 
   useEffect(() => {
     if (!activeSession) return
@@ -186,71 +85,13 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     return () => clearInterval(id)
   }, [activeSession])
 
-  const drainQueue = useCallback(async () => {
-    const items = await getAllQueueItems().catch(() => [])
-    const ours = items.filter((item) => item.domain === 'jfb_daily_activities')
-    setPendingItems(ours)
-    setPendingSyncCount(ours.length)
-    if (!navigator.onLine || !createDailyActivity) return
-    for (const item of ours) {
-      try {
-        await createDailyActivity(item.recordData)
-        await deleteQueueItem(item.local_id)
-        setPendingItems((prev) => prev.filter((i) => i.local_id !== item.local_id))
-        setPendingSyncCount((n) => Math.max(0, n - 1))
-      } catch {
-        // Still offline or still failing -- leave it queued, retry next tick.
-      }
-    }
-  }, [createDailyActivity])
-
-  useEffect(() => {
-
-    const kickoffId = setTimeout(drainQueue, 0)
-    const intervalId = setInterval(drainQueue, 30000)
-    window.addEventListener('online', drainQueue)
-    return () => {
-      clearTimeout(kickoffId)
-      clearInterval(intervalId)
-      window.removeEventListener('online', drainQueue)
-    }
-  }, [drainQueue])
-
   const favorites = (project && favoritesByProject[project.id]) || []
-
-  const areaOptions = project?.areasFlat?.length
-    ? project.areasFlat.filter((a) => a.depth === 1).map((a) => ({ value: a.id, label: a.name }))
-    : (project?.areas || [])
-  const subAreaOptions = (project?.areasFlat || [])
-    .filter((a) => a.depth === 2 && a.parent_id === areaValue)
-    .map((a) => ({ value: a.id, label: a.name }))
-  const subSubAreaOptions = (project?.areasFlat || [])
-    .filter((a) => a.depth === 3 && a.parent_id === subAreaValue)
-    .map((a) => ({ value: a.id, label: a.name }))
-  const showSubArea = !!project?.subAreaLabel && (project?.areasFlat || []).some((a) => a.depth === 2)
-  const showSubSubArea = !!project?.subSubAreaLabel && (project?.areasFlat || []).some((a) => a.depth === 3)
-
-  function labelForAreaValue(options, value) {
-    if (!value) return ''
-    const opt = options.find((o) => (typeof o === 'string' ? o === value : o.value === value))
-    if (!opt) return value
-    return typeof opt === 'string' ? opt : opt.label
-  }
-
-  function handleAreaChange(v) {
-    setAreaValue(v ?? '')
-    setSubAreaValue('')
-    setSubSubAreaValue('')
-  }
-  function handleSubAreaChange(v) {
-    setSubAreaValue(v ?? '')
-    setSubSubAreaValue('')
-  }
 
   function selectProject(item) {
     const proj = projects.find((p) => p.id === item.id)
     setProject(proj)
-    setAreaValue(''); setSubAreaValue(''); setSubSubAreaValue(''); setPassValue('')
+    areaCascade.reset()
+    setPassValue('')
     if (proj.equipment.length === 1) {
       setEquipment(proj.equipment[0].name)
       setEquipmentId(proj.equipment[0].id)
@@ -284,7 +125,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   }
 
   function persistActiveSession(session) {
-    localStorage.setItem(RECOVERY_KEY, JSON.stringify({
+    writeRecovery({
       projectId: project.id,
       equipment,
       equipmentId,
@@ -300,7 +141,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       notes: session.notes,
       lane: session.lane,
       step: session.step,
-    }))
+    })
   }
 
   function endActiveSession(endTime) {
@@ -323,7 +164,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         lane: cur.lane,
         step: cur.step,
       }, ...prev])
-      localStorage.removeItem(RECOVERY_KEY)
+      clearRecovery()
       saveDailyActivity(createDailyActivity, {
         projectId: project.id,
         equipmentId,
@@ -341,9 +182,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     const session = {
       activity,
       startTime: new Date(),
-      areaL1: labelForAreaValue(areaOptions, areaValue),
-      areaL2: labelForAreaValue(subAreaOptions, subAreaValue),
-      areaL3: labelForAreaValue(subSubAreaOptions, subSubAreaValue),
+      areaL1: areaCascade.labelForValue(areaCascade.areaOptions, areaCascade.areaValue),
+      areaL2: areaCascade.labelForValue(areaCascade.subAreaOptions, areaCascade.subAreaValue),
+      areaL3: areaCascade.labelForValue(areaCascade.subSubAreaOptions, areaCascade.subSubAreaValue),
       pass: passValue,
       notes,
       lane: lane || '',
@@ -427,10 +268,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   }
 
   function saveRecoveredSession() {
-    const start = new Date(recoveryData.startTimeISO)
-    const end = new Date(start)
-    end.setHours(recoveryEndTime.hours, recoveryEndTime.minutes, 0, 0)
-    if (end <= start) end.setDate(end.getDate() + 1)
+    const { recoveryData, recoveredProject } = crashRecovery
+    const { start, end } = crashRecovery.buildRecoveredSession()
     setSessions((prev) => [{
       id: crypto.randomUUID(),
       category: recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code,
@@ -441,7 +280,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       pass: recoveryData.pass,
       description: recoveryData.notes, lane: recoveryData.lane, step: recoveryData.step,
     }, ...prev])
-    localStorage.removeItem(RECOVERY_KEY)
+    crashRecovery.clear()
     saveDailyActivity(createDailyActivity, {
       projectId: recoveredProject.id,
       equipmentId: recoveryData.equipmentId,
@@ -456,66 +295,32 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setOperator(recoveryData.operator)
     setOperatorId(recoveryData.operatorId)
     setSessionId(recoveryData.sessionId)
-    setRecoveryData(null)
     setStep('tracking')
   }
   function discardRecoveredSession() {
-    localStorage.removeItem(RECOVERY_KEY)
+    const { recoveryData, recoveredProject } = crashRecovery
+    crashRecovery.clear()
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
     setEquipmentId(recoveryData.equipmentId)
     setOperator(recoveryData.operator)
     setOperatorId(recoveryData.operatorId)
     setSessionId(recoveryData.sessionId)
-    setRecoveryData(null)
     setStep('tracking')
   }
 
-  if (step === 'sessionInterrupted' && recoveryData) {
-    if (!recoveredProject) {
-      return (
-        <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.recoveryBg }}>
-          <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
-            <Text c="#fff" fw={800} size="xl" mb={6}>Session interrupted</Text>
-            <Text c="rgba(255,255,255,0.55)" size="sm" mb={20}>
-              {projectsLoading ? 'Loading project data…' : "This session's project could not be found."}
-            </Text>
-            {!projectsLoading && (
-              <UnstyledButton onClick={discardRecoveredSession} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
-                Discard — session was already stopped
-              </UnstyledButton>
-            )}
-          </Box>
-        </ScrollArea>
-      )
-    }
-    const startDt = new Date(recoveryData.startTimeISO)
-    const label = recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code
-    const badgeColor = recoveryData.activity.active ? COLORS.secondaryGreen : groupColor(recoveredProject, recoveryData.activity.category)
-    const agoMs = now - startDt.getTime()
-    const agoH = Math.floor(agoMs / 3600000)
-    const agoM = Math.floor((agoMs % 3600000) / 60000)
+  if (step === 'sessionInterrupted' && crashRecovery.recoveryData) {
     return (
-      <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.recoveryBg }}>
-        <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
-          <Text style={{ fontSize: 36 }} mb={12}>⚡</Text>
-          <Text c="#fff" fw={800} size="xl" mb={6}>Session interrupted</Text>
-          <Text c="rgba(255,255,255,0.55)" size="sm" mb={20}>The app closed while a session was running.</Text>
-          <Badge size="lg" radius="md" style={{ background: badgeColor, color: '#fff', padding: '10px 22px', height: 'auto', fontSize: 15 }} mb={6}>
-            {label}
-          </Badge>
-          <Text c="rgba(255,255,255,0.6)" size="sm" mt={8}>Started {formatTimeOfDay(startDt)}</Text>
-          <Text c="rgba(255,255,255,0.4)" size="xs" mb={24}>({agoH > 0 ? `${agoH}h ${agoM}m ago` : `${agoM}m ago`})</Text>
-          <Text c="rgba(255,255,255,0.6)" size="xs" fw={700} tt="uppercase" mb={10}>What time did it end?</Text>
-          <TimeStepper hours={recoveryEndTime.hours} minutes={recoveryEndTime.minutes} onChange={setRecoveryEndTime} />
-          <Button fullWidth size="lg" mt={24} style={{ background: COLORS.secondaryGreen }} onClick={saveRecoveredSession}>
-            ✓ Save Session
-          </Button>
-          <UnstyledButton mt={10} onClick={discardRecoveredSession} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
-            Discard — session was already stopped
-          </UnstyledButton>
-        </Box>
-      </ScrollArea>
+      <SessionInterruptedScreen
+        projectsLoading={projectsLoading}
+        recoveredProject={crashRecovery.recoveredProject}
+        recoveryData={crashRecovery.recoveryData}
+        now={now}
+        recoveryEndTime={crashRecovery.recoveryEndTime}
+        onChangeRecoveryEndTime={crashRecovery.setRecoveryEndTime}
+        onSave={saveRecoveredSession}
+        onDiscard={discardRecoveredSession}
+      />
     )
   }
 
@@ -557,57 +362,28 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   if (step === 'shiftStart' && project) {
     return (
-      <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.primaryBlue }}>
-        <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
-          <Image src={brennanLogo} h={48} fit="contain" mx="auto" mb={20} />
-          <Text c="#fff" fw={800} size="xl" mb={6}>What time did the shift start?</Text>
-          <Text c="rgba(255,255,255,0.6)" size="sm" mb={8}>Include safety meeting time — all pre-dredge time logs as Startup/Shutdown</Text>
-          <Text c="rgba(255,255,255,0.5)" size="xs" mb={28}>Operator: {operator} · {equipment}</Text>
-          <TimeStepper hours={shiftTime.hours} minutes={shiftTime.minutes} onChange={setShiftTime} />
-          <Button fullWidth size="lg" mt={24} style={{ background: COLORS.secondaryGreen }} onClick={confirmShiftStart}>
-            Confirm Shift Start →
-          </Button>
-          <UnstyledButton mt={12} onClick={skipShiftStart} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
-            Skip — start from now
-          </UnstyledButton>
-        </Box>
-      </ScrollArea>
+      <ShiftStartScreen
+        operator={operator}
+        equipment={equipment}
+        shiftTime={shiftTime}
+        onChangeShiftTime={setShiftTime}
+        onConfirm={confirmShiftStart}
+        onSkip={skipShiftStart}
+      />
     )
   }
 
   if (step === 'confirmSetup' && project) {
-    const rows = [
-      { label: 'Project', value: project.name, onEdit: () => setStep('project') },
-      { label: 'Equipment', value: equipment, onEdit: () => setStep('equipment') },
-      { label: 'Operator', value: operator, onEdit: () => setStep('operator') },
-    ]
     return (
-      <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.primaryBlue }}>
-        <Box p={32} style={{ maxWidth: 460, margin: '0 auto', fontFamily: FONT_FAMILY }}>
-          <Image src={brennanLogo} h={44} fit="contain" mx="auto" mb={20} />
-          <Text c="#fff" fw={800} size="xl" ta="center" mb={6}>Good morning — confirm your setup</Text>
-          <Text c="rgba(255,255,255,0.55)" size="sm" ta="center" mb={24}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-          </Text>
-          {rows.map((row) => (
-            <Group key={row.label} justify="space-between" p={14} mb={10} style={{ background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 10 }}>
-              <Box>
-                <Text size="10px" fw={700} c="rgba(255,255,255,0.5)" tt="uppercase" style={{ letterSpacing: '0.06em' }}>{row.label}</Text>
-                <Text size="sm" fw={700} c="#fff">{row.value}</Text>
-              </Box>
-              <UnstyledButton
-                onClick={row.onEdit}
-                style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.25)', borderRadius: 7, color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: 700 }}
-              >
-                Change
-              </UnstyledButton>
-            </Group>
-          ))}
-          <Button fullWidth size="lg" mt={8} style={{ background: COLORS.secondaryGreen }} onClick={() => setStep('shiftStart')}>
-            Confirm &amp; Set Shift Start →
-          </Button>
-        </Box>
-      </ScrollArea>
+      <ConfirmSetupScreen
+        project={project}
+        equipment={equipment}
+        operator={operator}
+        onEditProject={() => setStep('project')}
+        onEditEquipment={() => setStep('equipment')}
+        onEditOperator={() => setStep('operator')}
+        onConfirm={() => setStep('shiftStart')}
+      />
     )
   }
 
@@ -687,12 +463,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         )}
 
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
-          <Select label={project.areaLabel} data={areaOptions} value={areaValue} onChange={handleAreaChange} clearable size="xs" style={{ width: 160 }} />
-          {showSubArea && (
-            <Select label={project.subAreaLabel} data={subAreaOptions} value={subAreaValue} onChange={handleSubAreaChange} clearable size="xs" style={{ width: 160 }} />
+          <Select label={project.areaLabel} data={areaCascade.areaOptions} value={areaCascade.areaValue} onChange={areaCascade.handleAreaChange} clearable size="xs" style={{ width: 160 }} />
+          {areaCascade.showSubArea && (
+            <Select label={project.subAreaLabel} data={areaCascade.subAreaOptions} value={areaCascade.subAreaValue} onChange={areaCascade.handleSubAreaChange} clearable size="xs" style={{ width: 160 }} />
           )}
-          {showSubSubArea && (
-            <Select label={project.subSubAreaLabel} data={subSubAreaOptions} value={subSubAreaValue} onChange={(v) => setSubSubAreaValue(v ?? '')} clearable size="xs" style={{ width: 160 }} />
+          {areaCascade.showSubSubArea && (
+            <Select label={project.subSubAreaLabel} data={areaCascade.subSubAreaOptions} value={areaCascade.subSubAreaValue} onChange={areaCascade.handleSubSubAreaChange} clearable size="xs" style={{ width: 160 }} />
           )}
           <Select label={project.passLabel} data={project.passOptions} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
@@ -800,88 +576,21 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         }}
       />
 
-      <Modal opened={syncModalOpen} onClose={() => setSyncModalOpen(false)} title={<Text fw={700} size="sm">Sync Status</Text>} size="sm">
-        <Group justify="space-between" mb={8}>
-          <Text size="sm" c={COLORS.textMedium}>Synced this shift</Text>
-          <Text size="sm" fw={700} c={COLORS.secondaryGreen}>{Math.max(0, sessions.length - pendingSyncCount)}</Text>
-        </Group>
-        <Group justify="space-between" mb={16}>
-          <Text size="sm" c={COLORS.textMedium}>Pending sync</Text>
-          <Text size="sm" fw={700} c={pendingSyncCount > 0 ? (COLORS.warningBorder ?? '#d97706') : COLORS.secondaryGreen}>{pendingSyncCount}</Text>
-        </Group>
+      <SyncStatusModal
+        opened={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        syncedCount={Math.max(0, sessions.length - pendingSyncCount)}
+        pendingSyncCount={pendingSyncCount}
+        pendingItems={pendingItems}
+        onRetry={drainQueue}
+      />
 
-        {pendingItems.length === 0 ? (
-          <Text size="xs" c={COLORS.textLight} ta="center" py={10}>✓ Everything is synced.</Text>
-        ) : (
-          <Box mb={12}>
-            {pendingItems.map((item) => (
-              <Group key={item.local_id} justify="space-between" wrap="nowrap" p={8} mb={6} style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8 }}>
-                <Box style={{ minWidth: 0 }}>
-                  <Text size="xs" fw={600} truncate>
-                    {formatTimeOfDay(new Date(item.recordData.start_date_time))}–{formatTimeOfDay(new Date(item.recordData.end_date_time))}
-                  </Text>
-                  <Text size="10px" c={COLORS.textLight}>Queued {new Date(item.createdAt).toLocaleTimeString()}</Text>
-                </Box>
-                <Badge style={{ background: COLORS.warningBg ?? '#fef3c7', color: COLORS.warningText ?? '#92400e', flexShrink: 0 }}>Pending</Badge>
-              </Group>
-            ))}
-          </Box>
-        )}
-
-        <Group justify="flex-end">
-          <Button variant="default" size="xs" onClick={() => setSyncModalOpen(false)}>Close</Button>
-          {pendingSyncCount > 0 && (
-            <Button size="xs" style={{ background: COLORS.primaryBlue }} onClick={drainQueue}>Retry Now</Button>
-          )}
-        </Group>
-      </Modal>
-
-      {shiftEndOpen && (
-        <Box style={{ position: 'fixed', inset: 0, background: COLORS.shiftEndBg, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <Box style={{ maxWidth: 380, width: '100%', textAlign: 'center', fontFamily: FONT_FAMILY }}>
-            <Text c="#fff" fw={800} size="xl" mb={6}>What time did the shift end?</Text>
-            <Text c="rgba(255,255,255,0.6)" size="sm" mb={28}>Include ride back to shore — remaining time logs as Startup/Shutdown</Text>
-            <TimeStepper hours={shiftEndTime.hours} minutes={shiftEndTime.minutes} onChange={setShiftEndTime} />
-            <Button fullWidth size="lg" mt={24} style={{ background: COLORS.shiftEndAccent }} onClick={confirmShiftEnd}>
-              Confirm Shift End →
-            </Button>
-            <UnstyledButton mt={12} onClick={confirmShiftEnd} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
-              Skip — use current time
-            </UnstyledButton>
-          </Box>
-        </Box>
-      )}
+      <ShiftEndOverlay
+        opened={shiftEndOpen}
+        shiftEndTime={shiftEndTime}
+        onChangeShiftEndTime={setShiftEndTime}
+        onConfirm={confirmShiftEnd}
+      />
     </ScrollArea>
-  )
-}
-
-function TileButton({ code, color, isFavorite, onToggleFavorite, onClick, isActive }) {
-  return (
-    <UnstyledButton
-      onClick={onClick}
-      style={{
-        position: 'relative',
-        padding: '12px 26px 12px 16px',
-        borderRadius: 8,
-        minWidth: 140,
-        boxShadow: isActive ? '0 0 0 3px yellow, 0 4px 12px rgba(0,0,0,0.3)' : 'none',
-        background: color,
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1.3,
-        textAlign: 'center',
-      }}
-    >
-      {code.code}
-      <ActionIcon
-        variant="transparent"
-        size="xs"
-        style={{ position: 'absolute', top: 3, right: 5 }}
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(code.codeNum) }}
-      >
-        {isFavorite ? <IconStarFilled size={13} color="#FFD54A" /> : <IconStar size={13} color="rgba(255,255,255,0.55)" />}
-      </ActionIcon>
-    </UnstyledButton>
   )
 }
