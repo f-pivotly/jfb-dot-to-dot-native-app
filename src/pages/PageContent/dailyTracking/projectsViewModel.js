@@ -1,6 +1,12 @@
 import { getProjectExtras } from './dailyTrackingSampleData'
 
-export function buildProjects({ projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords }) {
+export function buildProjects({
+  projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
+  passTypeRecords = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
+}) {
+  const passOptions = passTypeRecords.map((pt) => ({ value: pt.id, label: pt.name }))
+  const masterDelayCodeById = new Map(masterDelayCodeRecords.map((m) => [m.id, m]))
+
   return projectRecords.map((p) => {
     const extras = getProjectExtras(p.name)
 
@@ -21,6 +27,22 @@ export function buildProjects({ projectRecords, operatorRecords, equipmentRecord
       .sort((a, b) => a.sort_order - b.sort_order)
     const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
 
+    // A jfb_project_delay_codes row either points at a master code
+    // (delay_code_id set -- category/code/code_num come from jfb_delay_codes)
+    // or is a project-specific custom code with no master match (those
+    // fields live on the row itself). See jfb_project_delay_codes.json.
+    const delayCodes = projectDelayCodeRecords
+      .filter((r) => r.project_id === p.id && r.active !== false)
+      .map((r) => {
+        const master = r.delay_code_id ? masterDelayCodeById.get(r.delay_code_id) : null
+        return {
+          id: r.id,
+          category: master ? master.category : r.category,
+          code: master ? master.code : r.code,
+          codeNum: master ? master.code_num : r.code_num,
+        }
+      })
+
     return {
       id: p.id,
       name: p.name,
@@ -31,6 +53,8 @@ export function buildProjects({ projectRecords, operatorRecords, equipmentRecord
       ...(level2 ? { subAreaLabel: level2.label } : {}),
       ...(level3 ? { subSubAreaLabel: level3.label } : {}),
       ...(level1AreaNames.length ? { areas: level1AreaNames } : {}),
+      ...(passOptions.length ? { passOptions } : {}),
+      ...(delayCodes.length ? { delayCodes } : {}),
       areasFlat,
     }
   })

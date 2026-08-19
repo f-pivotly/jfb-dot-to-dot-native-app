@@ -5,9 +5,9 @@ export function useAreaCascade(project) {
   const [subAreaValue, setSubAreaValue] = useState('')
   const [subSubAreaValue, setSubSubAreaValue] = useState('')
 
-  const areaOptions = project?.areasFlat?.length
-    ? project.areasFlat.filter((a) => a.depth === 1).map((a) => ({ value: a.id, label: a.name }))
-    : (project?.areas || [])
+  const areaOptions = (project?.areasFlat || [])
+    .filter((a) => a.depth === 1)
+    .map((a) => ({ value: a.id, label: a.name }))
   const subAreaOptions = (project?.areasFlat || [])
     .filter((a) => a.depth === 2 && a.parent_id === areaValue)
     .map((a) => ({ value: a.id, label: a.name }))

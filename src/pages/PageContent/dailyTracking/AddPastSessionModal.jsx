@@ -27,7 +27,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
   const [description, setDescription] = useState('')
   const areaCascade = useAreaCascade(project)
 
-  const categoryOptions = [activeTileLabel, ...(project?.delayCodes.map((c) => c.code) ?? [])]
+  const categoryOptions = [activeTileLabel, ...(project?.delayCodes?.map((c) => c.code) ?? [])]
   const operatorOptions = (project?.operators ?? []).map((o) => ({ value: o.id, label: o.name }))
 
   function reset() {
@@ -41,11 +41,13 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
     const start = new Date(`${startDate}T${startTime}:00`)
     const end = new Date(`${endDate}T${endTime}:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return
-    const delayCode = project?.delayCodes.find((c) => c.code === category)
+    const delayCode = project?.delayCodes?.find((c) => c.code === category)
     const selectedOperator = project?.operators?.find((o) => o.id === operatorId)
+    const passLabel = (project?.passOptions ?? []).find((o) => o.value === pass)?.label ?? ''
     onSave({
       category,
       delayCategory: delayCode?.category ?? null,
+      delayCodeId: delayCode?.id ?? null,
       startTime: start,
       endTime: end,
       durationMs: end - start,
@@ -54,7 +56,11 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       areaL1: areaCascade.labelForValue(areaCascade.areaOptions, areaCascade.areaValue),
       areaL2: areaCascade.labelForValue(areaCascade.subAreaOptions, areaCascade.subAreaValue),
       areaL3: areaCascade.labelForValue(areaCascade.subSubAreaOptions, areaCascade.subSubAreaValue),
-      pass,
+      areaId: areaCascade.areaValue || null,
+      subAreaId: areaCascade.subAreaValue || null,
+      subSubAreaId: areaCascade.subSubAreaValue || null,
+      pass: passLabel,
+      passTypeId: pass || null,
       description,
     })
     reset()

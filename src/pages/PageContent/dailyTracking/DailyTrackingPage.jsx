@@ -30,16 +30,25 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
   const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
   const areaLevelsSource = findDomainSource(domainSources, 'jfb_project_area_levels')
+  const passTypesSource = findDomainSource(domainSources, 'jfb_pass_types')
+  const projectDelayCodesSource = findDomainSource(domainSources, 'jfb_project_delay_codes')
+  const masterDelayCodesSource = findDomainSource(domainSources, 'jfb_delay_codes')
 
   const { records: projectRecords, loading: projectsLoading, offline: projectsOffline } = useCachedDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
   const { records: operatorRecords } = useCachedDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
   const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
   const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
   const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
+  const { records: passTypeRecords } = useCachedDomainData({ domain: passTypesSource?.domain, system: passTypesSource?.system })
+  const { records: projectDelayCodeRecords } = useCachedDomainData({ domain: projectDelayCodesSource?.domain, system: projectDelayCodesSource?.system })
+  const { records: masterDelayCodeRecords } = useCachedDomainData({ domain: masterDelayCodesSource?.domain, system: masterDelayCodesSource?.system })
 
   const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
-  const projects = buildProjects({ projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords })
+  const projects = buildProjects({
+    projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
+    passTypeRecords, projectDelayCodeRecords, masterDelayCodeRecords,
+  })
 
   const crashRecovery = useCrashRecovery(projects)
 
@@ -137,7 +146,11 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       areaL1: session.areaL1,
       areaL2: session.areaL2,
       areaL3: session.areaL3,
+      areaId: session.areaId,
+      subAreaId: session.subAreaId,
+      subSubAreaId: session.subSubAreaId,
       pass: session.pass,
+      passTypeId: session.passTypeId,
       notes: session.notes,
       lane: session.lane,
       step: session.step,
@@ -172,6 +185,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         sessionId,
         startTime: cur.startTime,
         endTime: end,
+        areaId: cur.areaId,
+        subAreaId: cur.subAreaId,
+        subSubAreaId: cur.subSubAreaId,
+        passTypeId: cur.passTypeId,
+        delayCodeId: cur.activity?.id ?? null,
+        notes: cur.notes,
       })
       return null
     })
@@ -179,13 +198,18 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   function startSession(activity, lane, stepVal) {
     if (activeSession) endActiveSession()
+    const passTypeLabel = passTypeRecords.find((pt) => pt.id === passValue)?.name ?? ''
     const session = {
       activity,
       startTime: new Date(),
       areaL1: areaCascade.labelForValue(areaCascade.areaOptions, areaCascade.areaValue),
       areaL2: areaCascade.labelForValue(areaCascade.subAreaOptions, areaCascade.subAreaValue),
       areaL3: areaCascade.labelForValue(areaCascade.subSubAreaOptions, areaCascade.subSubAreaValue),
-      pass: passValue,
+      areaId: areaCascade.areaValue || null,
+      subAreaId: areaCascade.subAreaValue || null,
+      subSubAreaId: areaCascade.subSubAreaValue || null,
+      pass: passTypeLabel,
+      passTypeId: passValue || null,
       notes,
       lane: lane || '',
       step: stepVal || '',
@@ -288,6 +312,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       sessionId: recoveryData.sessionId,
       startTime: start,
       endTime: end,
+      areaId: recoveryData.areaId,
+      subAreaId: recoveryData.subAreaId,
+      subSubAreaId: recoveryData.subSubAreaId,
+      passTypeId: recoveryData.passTypeId,
+      delayCodeId: recoveryData.activity?.id ?? null,
+      notes: recoveryData.notes,
     })
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
@@ -390,8 +420,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   if (!project) return null
 
   const activeIsRunning = !!activeSession
+  const delayCodes = project.delayCodes || []
   const seenCats = []
-  project.delayCodes.forEach((c) => {
+  delayCodes.forEach((c) => {
     if (!seenCats.includes(c.category)) seenCats.push(c.category)
   })
   const totalHours = sessions.reduce((sum, s) => sum + s.durationMs, 0) / 3600000
@@ -463,14 +494,14 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         )}
 
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
-          <Select label={project.areaLabel} data={areaCascade.areaOptions} value={areaCascade.areaValue} onChange={areaCascade.handleAreaChange} clearable size="xs" style={{ width: 160 }} />
+          <Select label={project.areaLabel ?? 'Area'} data={areaCascade.areaOptions} value={areaCascade.areaValue} onChange={areaCascade.handleAreaChange} clearable size="xs" style={{ width: 160 }} />
           {areaCascade.showSubArea && (
             <Select label={project.subAreaLabel} data={areaCascade.subAreaOptions} value={areaCascade.subAreaValue} onChange={areaCascade.handleSubAreaChange} clearable size="xs" style={{ width: 160 }} />
           )}
           {areaCascade.showSubSubArea && (
             <Select label={project.subSubAreaLabel} data={areaCascade.subSubAreaOptions} value={areaCascade.subSubAreaValue} onChange={areaCascade.handleSubSubAreaChange} clearable size="xs" style={{ width: 160 }} />
           )}
-          <Select label={project.passLabel} data={project.passOptions} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
+          <Select label={project.passLabel ?? 'Pass'} data={project.passOptions ?? []} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
         </Group>
 
@@ -491,7 +522,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             <>
               <Text size="11px" fw={800} c="#B8860B" tt="uppercase" mb={6} style={{ letterSpacing: '0.06em' }}>★ Favorites</Text>
               <Group gap={10} mb={16}>
-                {project.delayCodes.filter((c) => favorites.includes(c.codeNum)).map((c) => (
+                {delayCodes.filter((c) => favorites.includes(c.codeNum)).map((c) => (
                   <TileButton key={c.codeNum} code={c} color={groupColor(project, c.category)} isFavorite onToggleFavorite={toggleFavorite} onClick={() => handleActivityClick(c)} isActive={activeIsRunning && !activeSession.activity.active && activeSession.activity.codeNum === c.codeNum} />
                 ))}
               </Group>
@@ -502,7 +533,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             <Box key={cat} mb={16}>
               <Text size="11px" fw={800} c="#5a6a7a" tt="uppercase" mb={6} style={{ letterSpacing: '0.06em' }}>{cat}</Text>
               <Group gap={10}>
-                {project.delayCodes.filter((c) => c.category === cat).map((c) => (
+                {delayCodes.filter((c) => c.category === cat).map((c) => (
                   <TileButton
                     key={c.codeNum}
                     code={c}
@@ -572,6 +603,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             sessionId,
             startTime: s.startTime,
             endTime: s.endTime,
+            areaId: s.areaId,
+            subAreaId: s.subAreaId,
+            subSubAreaId: s.subSubAreaId,
+            passTypeId: s.passTypeId,
+            delayCodeId: s.delayCodeId,
+            notes: s.description,
           })
         }}
       />
