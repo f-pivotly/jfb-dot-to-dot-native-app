@@ -26,6 +26,7 @@ import brennanLogo from './assets/brennan-logo.png'
 export default function DailyTrackingPage({ domainSources = [] }) {
   const projectsSource = findDomainSource(domainSources, 'jfb_projects')
   const operatorsSource = findDomainSource(domainSources, 'jfb_operators')
+  const projectOperatorsSource = findDomainSource(domainSources, 'jfb_project_operators')
   const equipmentsSource = findDomainSource(domainSources, 'jfb_equipments')
   const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
   const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
@@ -36,6 +37,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const { records: projectRecords, loading: projectsLoading, offline: projectsOffline } = useCachedDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
   const { records: operatorRecords } = useCachedDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
+  const { records: projectOperatorRecords } = useCachedDomainData({ domain: projectOperatorsSource?.domain, system: projectOperatorsSource?.system })
   const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
   const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
   const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
@@ -46,7 +48,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
   const projects = buildProjects({
-    projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
+    projectRecords, operatorRecords, projectOperatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
     passTypeRecords, projectDelayCodeRecords, masterDelayCodeRecords,
   })
 

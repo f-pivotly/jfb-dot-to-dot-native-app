@@ -1,11 +1,12 @@
 import { getProjectExtras } from './dailyTrackingSampleData'
 
 export function buildProjects({
-  projectRecords, operatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
+  projectRecords, operatorRecords, projectOperatorRecords = [], equipmentRecords, areaRecords, areaLevelRecords,
   passTypeRecords = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
 }) {
   const passOptions = passTypeRecords.map((pt) => ({ value: pt.id, label: pt.name }))
   const masterDelayCodeById = new Map(masterDelayCodeRecords.map((m) => [m.id, m]))
+  const operatorById = new Map(operatorRecords.map((o) => [o.id, o]))
 
   return projectRecords.map((p) => {
     const extras = getProjectExtras(p.name)
@@ -47,7 +48,11 @@ export function buildProjects({
       id: p.id,
       name: p.name,
       equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({ id: e.id, name: e.name })),
-      operators: operatorRecords.filter((o) => o.project_id === p.id).map((o) => ({ id: o.id, name: o.name })),
+      operators: projectOperatorRecords
+        .filter((r) => r.project_id === p.id && r.is_active !== false)
+        .map((r) => operatorById.get(r.operator_id))
+        .filter(Boolean)
+        .map((o) => ({ id: o.id, name: o.name })),
       ...extras,
       ...(level1 ? { areaLabel: level1.label } : {}),
       ...(level2 ? { subAreaLabel: level2.label } : {}),
