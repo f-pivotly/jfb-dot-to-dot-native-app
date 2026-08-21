@@ -60,7 +60,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       subAreaId: areaCascade.subAreaValue || null,
       subSubAreaId: areaCascade.subSubAreaValue || null,
       pass: passLabel,
-      passTypeId: pass || null,
+      passType: pass || null,
       description,
     })
     reset()

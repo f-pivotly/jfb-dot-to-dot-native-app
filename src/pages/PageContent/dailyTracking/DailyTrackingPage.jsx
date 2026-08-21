@@ -20,6 +20,7 @@ import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
 import { useDomainData } from '../../../hooks/useDomainData'
 import { useCachedDomainData } from '../../../hooks/useCachedDomainData'
+import { usePicklist } from '../../../hooks/usePicklist'
 import { findDomainSource } from '../../../helpers/formatting'
 import brennanLogo from './assets/brennan-logo.png'
 
@@ -31,7 +32,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
   const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
   const areaLevelsSource = findDomainSource(domainSources, 'jfb_project_area_levels')
-  const passTypesSource = findDomainSource(domainSources, 'jfb_pass_types')
   const projectDelayCodesSource = findDomainSource(domainSources, 'jfb_project_delay_codes')
   const masterDelayCodesSource = findDomainSource(domainSources, 'jfb_delay_codes')
 
@@ -41,15 +41,17 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
   const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
   const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
-  const { records: passTypeRecords } = useCachedDomainData({ domain: passTypesSource?.domain, system: passTypesSource?.system })
   const { records: projectDelayCodeRecords } = useCachedDomainData({ domain: projectDelayCodesSource?.domain, system: projectDelayCodesSource?.system })
   const { records: masterDelayCodeRecords } = useCachedDomainData({ domain: masterDelayCodesSource?.domain, system: masterDelayCodesSource?.system })
+  const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
 
   const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
 
+  const passOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
+
   const projects = buildProjects({
     projectRecords, operatorRecords, projectOperatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
-    passTypeRecords, projectDelayCodeRecords, masterDelayCodeRecords,
+    passOptions, projectDelayCodeRecords, masterDelayCodeRecords,
   })
 
   const crashRecovery = useCrashRecovery(projects)
@@ -63,7 +65,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [sessionId, setSessionId] = useState(crashRecovery.recovery?.sessionId ?? null)
   const [shiftStart, setShiftStart] = useState(null)
   const [shiftTime, setShiftTime] = useState(() => {
-    const d = new Date()
+    const d = new Date(Math.round(Date.now() / 300000) * 300000)
     return { hours: d.getHours(), minutes: d.getMinutes() }
   })
 
@@ -84,7 +86,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [addPastOpen, setAddPastOpen] = useState(false)
   const [shiftEndOpen, setShiftEndOpen] = useState(false)
   const [shiftEndTime, setShiftEndTime] = useState(() => {
-    const d = new Date()
+    const d = new Date(Math.round(Date.now() / 300000) * 300000)
     return { hours: d.getHours(), minutes: d.getMinutes() }
   })
 
@@ -152,7 +154,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       subAreaId: session.subAreaId,
       subSubAreaId: session.subSubAreaId,
       pass: session.pass,
-      passTypeId: session.passTypeId,
+      passType: session.passType,
       notes: session.notes,
       lane: session.lane,
       step: session.step,
@@ -190,7 +192,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         areaId: cur.areaId,
         subAreaId: cur.subAreaId,
         subSubAreaId: cur.subSubAreaId,
-        passTypeId: cur.passTypeId,
+        passType: cur.passType,
         delayCodeId: cur.activity?.id ?? null,
         notes: cur.notes,
       })
@@ -200,7 +202,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   function startSession(activity, lane, stepVal) {
     if (activeSession) endActiveSession()
-    const passTypeLabel = passTypeRecords.find((pt) => pt.id === passValue)?.name ?? ''
+    const passTypeLabel = passValue ? (passTypeLabels[passValue] ?? passValue) : ''
     const session = {
       activity,
       startTime: new Date(),
@@ -211,7 +213,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       subAreaId: areaCascade.subAreaValue || null,
       subSubAreaId: areaCascade.subSubAreaValue || null,
       pass: passTypeLabel,
-      passTypeId: passValue || null,
+      passType: passValue || null,
       notes,
       lane: lane || '',
       step: stepVal || '',
@@ -317,7 +319,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       areaId: recoveryData.areaId,
       subAreaId: recoveryData.subAreaId,
       subSubAreaId: recoveryData.subSubAreaId,
-      passTypeId: recoveryData.passTypeId,
+      passType: recoveryData.passType,
       delayCodeId: recoveryData.activity?.id ?? null,
       notes: recoveryData.notes,
     })
@@ -608,7 +610,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             areaId: s.areaId,
             subAreaId: s.subAreaId,
             subSubAreaId: s.subSubAreaId,
-            passTypeId: s.passTypeId,
+            passType: s.passType,
             delayCodeId: s.delayCodeId,
             notes: s.description,
           })

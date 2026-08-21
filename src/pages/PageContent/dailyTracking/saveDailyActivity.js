@@ -2,7 +2,7 @@ import { enqueueSync } from '../../../data/offlineDb'
 
 export async function saveDailyActivity(createFn, {
   projectId, equipmentId, operatorId, sessionId, startTime, endTime,
-  areaId, subAreaId, subSubAreaId, passTypeId, delayCodeId, notes,
+  areaId, subAreaId, subSubAreaId, passType, delayCodeId, notes,
 }) {
   const area = areaId || subAreaId || subSubAreaId
     ? {
@@ -20,7 +20,7 @@ export async function saveDailyActivity(createFn, {
     end_date_time: endTime.toISOString(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     area,
-    pass_type_id: passTypeId || null,
+    pass_type: passType || null,
     delay_code_id: delayCodeId || null,
     notes: notes || null,
   }

@@ -16,7 +16,7 @@ export function useDomainData({ domain, system }) {
     if (!domain || !system) return Promise.resolve()
     if (!cancelledRef.current) setLoading(true)
     if (!cancelledRef.current) setError(null)
-    return fetchDomainRecords({ domain, system, appSlug: config.appSlug })
+    return fetchDomainRecords({ domain, system, appSlug: config.appSlug, limit: 1000 })
       .then((res) => {
         if (!cancelledRef.current) setRecords(Array.isArray(res) ? res : (res?.data ?? []))
       })

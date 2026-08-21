@@ -2,9 +2,8 @@ import { getProjectExtras } from './dailyTrackingSampleData'
 
 export function buildProjects({
   projectRecords, operatorRecords, projectOperatorRecords = [], equipmentRecords, areaRecords, areaLevelRecords,
-  passTypeRecords = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
+  passOptions = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
 }) {
-  const passOptions = passTypeRecords.map((pt) => ({ value: pt.id, label: pt.name }))
   const masterDelayCodeById = new Map(masterDelayCodeRecords.map((m) => [m.id, m]))
   const operatorById = new Map(operatorRecords.map((o) => [o.id, o]))
 
