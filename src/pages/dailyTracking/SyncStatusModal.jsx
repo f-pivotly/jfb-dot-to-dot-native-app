@@ -1,5 +1,5 @@
 import { Box, Text, Group, Button, Badge, Modal } from '@mantine/core'
-import { COLORS } from '../../../theme'
+import { COLORS } from '../../theme'
 import { formatTimeOfDay } from './dailyTrackingFormat'
 
 export default function SyncStatusModal({ opened, onClose, syncedCount, pendingSyncCount, pendingItems, onRetry }) {

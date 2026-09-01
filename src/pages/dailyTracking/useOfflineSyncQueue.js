@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { getAllQueueItems, deleteQueueItem } from '../../../data/offlineDb'
+import { getAllQueueItems, deleteQueueItem } from '../../data/offlineDb'
 
 export function useOfflineSyncQueue({ createDailyActivity }) {
   const [pendingSyncCount, setPendingSyncCount] = useState(0)

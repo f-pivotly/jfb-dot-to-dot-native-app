@@ -1,8 +1,8 @@
-import { getProjectExtras } from './dailyTrackingSampleData'
+import { getProjectExtras } from './projectExtras'
 
 export function buildProjects({
   projectRecords, operatorRecords, projectOperatorRecords = [], equipmentRecords, areaRecords, areaLevelRecords,
-  passOptions = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
+  layerRecords = [], passOptions = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
 }) {
   const masterDelayCodeById = new Map(masterDelayCodeRecords.map((m) => [m.id, m]))
   const operatorById = new Map(operatorRecords.map((o) => [o.id, o]))
@@ -27,10 +27,14 @@ export function buildProjects({
       .sort((a, b) => a.sort_order - b.sort_order)
     const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
 
-    // A jfb_project_delay_codes row either points at a master code
-    // (delay_code_id set -- category/code/code_num come from jfb_delay_codes)
-    // or is a project-specific custom code with no master match (those
-    // fields live on the row itself). See jfb_project_delay_codes.json.
+    // More than one active layer means the layer IS the lift -- mirrors
+    // isMultiLayerProject() in the PWA, minus the work_type gate (jfb_projects
+    // has no work_type field yet; only capping/placement projects get >1 row).
+    const layers = layerRecords
+      .filter((l) => l.project_id === p.id && l.active !== false)
+      .slice()
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    const isMultiLayerProject = layers.length > 1
     const delayCodes = projectDelayCodeRecords
       .filter((r) => r.project_id === p.id && r.active !== false)
       .map((r) => {
@@ -59,6 +63,11 @@ export function buildProjects({
       ...(level1AreaNames.length ? { areas: level1AreaNames } : {}),
       ...(passOptions.length ? { passOptions } : {}),
       ...(delayCodes.length ? { delayCodes } : {}),
+      ...(layers.length ? { layers } : {}),
+      ...(isMultiLayerProject
+        ? { passLabel: 'Layer', passOptions: layers.map((l) => ({ value: l.id, label: l.layer_name })) }
+        : {}),
+      isMultiLayerProject,
       areasFlat,
     }
   })

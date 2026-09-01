@@ -1,6 +1,6 @@
 import { Box, Text, Button, UnstyledButton, Badge, ScrollArea } from '@mantine/core'
 import TimeStepper from './TimeStepper'
-import { COLORS, FONT_FAMILY } from '../../../theme'
+import { COLORS, FONT_FAMILY } from '../../theme'
 import { activeTileLabel, groupColor, formatTimeOfDay } from './dailyTrackingFormat'
 
 export default function SessionInterruptedScreen({

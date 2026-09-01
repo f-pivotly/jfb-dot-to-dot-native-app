@@ -10,7 +10,7 @@ import ShiftStartScreen from './ShiftStartScreen'
 import ConfirmSetupScreen from './ConfirmSetupScreen'
 import ShiftEndOverlay from './ShiftEndOverlay'
 import SyncStatusModal from './SyncStatusModal'
-import { COLORS, FONT_FAMILY } from '../../../theme'
+import { COLORS, FONT_FAMILY } from '../../theme'
 import { activeTileLabel, activityLabel, groupColor, formatClock, formatDuration, formatTimeOfDay } from './dailyTrackingFormat'
 import { writeRecovery, clearRecovery } from './recoverySession'
 import { saveDailyActivity } from './saveDailyActivity'
@@ -18,10 +18,10 @@ import { buildProjects } from './projectsViewModel'
 import { useAreaCascade } from './useAreaCascade'
 import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
-import { useDomainData } from '../../../hooks/useDomainData'
-import { useCachedDomainData } from '../../../hooks/useCachedDomainData'
-import { usePicklist } from '../../../hooks/usePicklist'
-import { findDomainSource } from '../../../helpers/formatting'
+import { useDomainData } from '../../hooks/useDomainData'
+import { useCachedDomainData } from '../../hooks/useCachedDomainData'
+import { usePicklist } from '../../hooks/usePicklist'
+import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from './assets/brennan-logo.png'
 
 export default function DailyTrackingPage({ domainSources = [] }) {
@@ -32,6 +32,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
   const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
   const areaLevelsSource = findDomainSource(domainSources, 'jfb_project_area_levels')
+  const layersSource = findDomainSource(domainSources, 'jfb_project_layers')
   const projectDelayCodesSource = findDomainSource(domainSources, 'jfb_project_delay_codes')
   const masterDelayCodesSource = findDomainSource(domainSources, 'jfb_delay_codes')
 
@@ -41,6 +42,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
   const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
   const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
+  const { records: layerRecords } = useCachedDomainData({ domain: layersSource?.domain, system: layersSource?.system })
   const { records: projectDelayCodeRecords } = useCachedDomainData({ domain: projectDelayCodesSource?.domain, system: projectDelayCodesSource?.system })
   const { records: masterDelayCodeRecords } = useCachedDomainData({ domain: masterDelayCodesSource?.domain, system: masterDelayCodesSource?.system })
   const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
@@ -51,7 +53,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const projects = buildProjects({
     projectRecords, operatorRecords, projectOperatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
-    passOptions, projectDelayCodeRecords, masterDelayCodeRecords,
+    layerRecords, passOptions, projectDelayCodeRecords, masterDelayCodeRecords,
   })
 
   const crashRecovery = useCrashRecovery(projects)
@@ -155,6 +157,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       subSubAreaId: session.subSubAreaId,
       pass: session.pass,
       passType: session.passType,
+      layerId: session.layerId,
       notes: session.notes,
       lane: session.lane,
       step: session.step,
@@ -193,6 +196,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         subAreaId: cur.subAreaId,
         subSubAreaId: cur.subSubAreaId,
         passType: cur.passType,
+        layerId: cur.layerId,
         delayCodeId: cur.activity?.id ?? null,
         notes: cur.notes,
       })
@@ -202,7 +206,16 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   function startSession(activity, lane, stepVal) {
     if (activeSession) endActiveSession()
-    const passTypeLabel = passValue ? (passTypeLabels[passValue] ?? passValue) : ''
+    const isMulti = project.isMultiLayerProject
+    // On a multi-layer project the Pass/Layer select's value IS a
+    // jfb_project_layers id, not a pkl-jfb-pass-type value -- resolve the
+    // display label from project.layers and store it as layerId, not passType.
+    let passLabel = ''
+    if (isMulti) {
+      passLabel = (project.layers || []).find((l) => l.id === passValue)?.layer_name ?? ''
+    } else if (passValue) {
+      passLabel = passTypeLabels[passValue] ?? passValue
+    }
     const session = {
       activity,
       startTime: new Date(),
@@ -212,8 +225,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       areaId: areaCascade.areaValue || null,
       subAreaId: areaCascade.subAreaValue || null,
       subSubAreaId: areaCascade.subSubAreaValue || null,
-      pass: passTypeLabel,
-      passType: passValue || null,
+      pass: passLabel,
+      passType: isMulti ? null : (passValue || null),
+      layerId: isMulti ? (passValue || null) : null,
       notes,
       lane: lane || '',
       step: stepVal || '',
@@ -320,6 +334,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       subAreaId: recoveryData.subAreaId,
       subSubAreaId: recoveryData.subSubAreaId,
       passType: recoveryData.passType,
+      layerId: recoveryData.layerId,
       delayCodeId: recoveryData.activity?.id ?? null,
       notes: recoveryData.notes,
     })
@@ -611,6 +626,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             subAreaId: s.subAreaId,
             subSubAreaId: s.subSubAreaId,
             passType: s.passType,
+            layerId: s.layerId,
             delayCodeId: s.delayCodeId,
             notes: s.description,
           })

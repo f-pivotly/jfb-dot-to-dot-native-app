@@ -1,15 +1,14 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Box, Text, Loader, Center } from "@mantine/core";
-import PageContent from "./pages/PageContent";
-import DailyTrackingPage from "./pages/PageContent/dailyTracking/DailyTrackingPage";
+import PageContent from "./pages/ContentRouter";
+import DailyTrackingPage from "./pages/dailyTracking/DailyTrackingPage";
 
 import { useNav } from "./hooks/useNav";
 import { usePageDetails } from "./hooks/usePageDetails";
 import { useAppConfig } from "./contexts/pivotlyAppConfigContext";
 import { usePicklistCatalog } from "./hooks/usePicklistCatalog";
 import { REQUIRED_PICKLISTS } from "./config/requiredPicklists";
-import { SAMPLE_MODE } from "./config/sampleMode";
 
 export default function App() {
   const { pathname } = useLocation();
@@ -36,23 +35,6 @@ export default function App() {
   useEffect(() => {
     if (resolvedSlug && !slug) loadPage(resolvedSlug);
   }, [resolvedSlug, slug, loadPage]);
-
-  if (SAMPLE_MODE) {
-    return (
-      <Box
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100vh",
-          overflow: "hidden",
-          fontFamily: "'Inter', -apple-system, sans-serif",
-          fontSize: 13,
-        }}
-      >
-        <DailyTrackingPage />
-      </Box>
-    );
-  }
 
   if (!ready && !configError) {
     return (

@@ -1,4 +1,4 @@
-import { COLORS, CATEGORY_COLORS } from '../../../theme'
+import { COLORS, CATEGORY_COLORS } from '../../theme'
 
 export function activeTileLabel(project) {
   return project.workType === 'capping' ? 'ACTIVE CAPPING' : 'ACTIVE DREDGING'

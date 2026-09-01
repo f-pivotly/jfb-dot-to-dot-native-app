@@ -1,5 +1,5 @@
 import { Box, Text, Group, Button, UnstyledButton, Image, ScrollArea } from '@mantine/core'
-import { COLORS, FONT_FAMILY } from '../../../theme'
+import { COLORS, FONT_FAMILY } from '../../theme'
 import brennanLogo from './assets/brennan-logo.png'
 
 export default function ConfirmSetupScreen({ project, equipment, operator, onEditProject, onEditEquipment, onEditOperator, onConfirm }) {

@@ -1,6 +1,6 @@
 import { Box, Text, Button, UnstyledButton } from '@mantine/core'
 import TimeStepper from './TimeStepper'
-import { COLORS, FONT_FAMILY } from '../../../theme'
+import { COLORS, FONT_FAMILY } from '../../theme'
 
 export default function ShiftEndOverlay({ opened, shiftEndTime, onChangeShiftEndTime, onConfirm }) {
   if (!opened) return null

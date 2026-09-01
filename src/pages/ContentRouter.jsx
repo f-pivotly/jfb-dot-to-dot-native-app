@@ -1,10 +1,7 @@
 import { Box, Text, Loader, Center } from "@mantine/core";
 import { IconRefresh } from "@tabler/icons-react";
-import SafeError from "../../components/SafeError";
-import FallbackPage from "./fallback/FallbackPage";
+import SafeError from "../components/SafeError";
 import DailyTrackingPage from "./dailyTracking/DailyTrackingPage";
-
-const DAILY_TRACKING_PAGE_SLUG = "apg-jfb-dot-to-dot-daily-event";
 
 export default function PageContent({
   pageData,
@@ -14,7 +11,7 @@ export default function PageContent({
   onRetry,
 }) {
   const inner = pageData?.data || pageData;
-  const { page, claims, data_access, actions } = inner ?? {};
+  const { data_access, actions } = inner ?? {};
 
   if (!pageData) return null;
 
@@ -89,26 +86,5 @@ export default function PageContent({
     Array.isArray(data_access) ? data_access : [data_access]
   ).filter((s) => s?.source_type === "domain" && s?.domain);
 
-  const sections = [
-    { key: "page", title: "Page Definition", data: page },
-    { key: "data_access", title: "Data Access", data: data_access },
-    { key: "claims", title: "Claims", data: claims },
-    { key: "actions", title: "Actions", data: actions },
-  ];
-
-  if (slug === DAILY_TRACKING_PAGE_SLUG) {
-    return <DailyTrackingPage domainSources={domainSources} actions={actions} />;
-  }
-
-  return (
-    <FallbackPage
-      page={page}
-      claims={claims}
-      data_access={data_access}
-      actions={actions}
-      pageData={pageData}
-      sections={sections}
-      domainSources={domainSources}
-    />
-  );
+  return <DailyTrackingPage domainSources={domainSources} actions={actions} />;
 }

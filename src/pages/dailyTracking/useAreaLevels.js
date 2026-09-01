@@ -1,4 +1,4 @@
-import { useDomainData } from '../../../hooks/useDomainData'
+import { useDomainData } from '../../hooks/useDomainData'
 
 export function useAreaLevels(projectId) {
   const { records, loading, error } = useDomainData({ domain: 'jfb_project_area_levels', system: 'core' })
