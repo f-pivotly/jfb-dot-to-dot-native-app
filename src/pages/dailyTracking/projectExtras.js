@@ -1,6 +1,5 @@
 
 export const DEFAULT_PROJECT_EXTRAS = {
-  workType: 'dredging',
   usesLaneStep: false,
 };
 

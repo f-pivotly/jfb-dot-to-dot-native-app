@@ -75,11 +75,6 @@ export async function getShellCache(key) {
   return row?.value
 }
 
-// ── Generic domain-keyed record cache ──────────────────────────────────────
-// Used to fall back to the last-known-good list for a domain (projects,
-// operators, equipment, areas, area levels, ...) when a live fetch fails --
-// e.g. no network.
-
 export async function cacheRecords(domain, records) {
   if (!domain || !Array.isArray(records)) return
   const db = await openDB()

@@ -43,9 +43,6 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return
     const delayCode = project?.delayCodes?.find((c) => c.code === category)
     const selectedOperator = project?.operators?.find((o) => o.id === operatorId)
-    // project.passOptions already holds {value: layer.id, label: layer.layer_name}
-    // on a multi-layer project, so the label lookup is generic; only the field
-    // the id gets saved to (passType vs. layerId) needs to branch.
     const isMulti = project?.isMultiLayerProject
     const passLabel = (project?.passOptions ?? []).find((o) => o.value === pass)?.label ?? ''
     onSave({

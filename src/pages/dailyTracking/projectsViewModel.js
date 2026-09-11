@@ -27,9 +27,6 @@ export function buildProjects({
       .sort((a, b) => a.sort_order - b.sort_order)
     const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
 
-    // More than one active layer means the layer IS the lift -- mirrors
-    // isMultiLayerProject() in the PWA, minus the work_type gate (jfb_projects
-    // has no work_type field yet; only capping/placement projects get >1 row).
     const layers = layerRecords
       .filter((l) => l.project_id === p.id && l.active !== false)
       .slice()
@@ -50,13 +47,19 @@ export function buildProjects({
     return {
       id: p.id,
       name: p.name,
-      equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({ id: e.id, name: e.name })),
+      equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({
+        id: e.id,
+        name: e.name,
+        workType: e.work_type ?? null,
+        workTypeFrom: e.work_type_from ?? null,
+      })),
       operators: projectOperatorRecords
         .filter((r) => r.project_id === p.id && r.is_active !== false)
         .map((r) => operatorById.get(r.operator_id))
         .filter(Boolean)
         .map((o) => ({ id: o.id, name: o.name })),
       ...extras,
+      workType: p.work_type ?? null,
       ...(level1 ? { areaLabel: level1.label } : {}),
       ...(level2 ? { subAreaLabel: level2.label } : {}),
       ...(level3 ? { subSubAreaLabel: level3.label } : {}),

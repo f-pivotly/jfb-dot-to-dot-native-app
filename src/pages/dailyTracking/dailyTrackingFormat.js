@@ -1,11 +1,19 @@
 import { COLORS, CATEGORY_COLORS } from '../../theme'
 
-export function activeTileLabel(project) {
-  return project.workType === 'capping' ? 'ACTIVE CAPPING' : 'ACTIVE DREDGING'
+export function effectiveWorkType(project, equipmentId) {
+  const eq = project?.equipment?.find((e) => e.id === equipmentId)
+  const pinned = (eq?.workType || '').trim()
+  if (pinned) return pinned
+  return (project?.workType || '').trim()
 }
 
-export function activityLabel(activity, project) {
-  return activity.active ? activeTileLabel(project) : activity.code
+export function activeTileLabel(project, equipmentId) {
+  const wt = effectiveWorkType(project, equipmentId).toLowerCase()
+  return (wt.includes('cap') || wt.includes('placement')) ? 'ACTIVE PLACEMENT' : 'ACTIVE DREDGING'
+}
+
+export function activityLabel(activity, project, equipmentId) {
+  return activity.active ? activeTileLabel(project, equipmentId) : activity.code
 }
 
 export function groupColor(project, category) {

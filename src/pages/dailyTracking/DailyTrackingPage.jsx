@@ -168,9 +168,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setActiveSession((cur) => {
       if (!cur) return cur
       const end = endTime || new Date()
+      const category = cur.activity.active ? activeTileLabel(project, equipmentId) : cur.activity.code
       setSessions((prev) => [{
         id: crypto.randomUUID(),
-        category: cur.activity.active ? activeTileLabel(project) : cur.activity.code,
+        category,
         delayCategory: cur.activity.active ? null : cur.activity.category,
         startTime: cur.startTime,
         endTime: end,
@@ -199,6 +200,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         layerId: cur.layerId,
         delayCodeId: cur.activity?.id ?? null,
         notes: cur.notes,
+        category,
       })
       return null
     })
@@ -207,9 +209,6 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   function startSession(activity, lane, stepVal) {
     if (activeSession) endActiveSession()
     const isMulti = project.isMultiLayerProject
-    // On a multi-layer project the Pass/Layer select's value IS a
-    // jfb_project_layers id, not a pkl-jfb-pass-type value -- resolve the
-    // display label from project.layers and store it as layerId, not passType.
     let passLabel = ''
     if (isMulti) {
       passLabel = (project.layers || []).find((l) => l.id === passValue)?.layer_name ?? ''
@@ -302,6 +301,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           sessionId,
           startTime: gap.startTime,
           endTime: gap.endTime,
+          category: gap.category,
         })
       })
     }
@@ -312,9 +312,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   function saveRecoveredSession() {
     const { recoveryData, recoveredProject } = crashRecovery
     const { start, end } = crashRecovery.buildRecoveredSession()
+    const category = recoveryData.activity.active
+      ? activeTileLabel(recoveredProject, recoveryData.equipmentId)
+      : recoveryData.activity.code
     setSessions((prev) => [{
       id: crypto.randomUUID(),
-      category: recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code,
+      category,
       delayCategory: recoveryData.activity.active ? null : recoveryData.activity.category,
       startTime: start, endTime: end, durationMs: end - start,
       operatorName: recoveryData.operator,
@@ -337,6 +340,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       layerId: recoveryData.layerId,
       delayCodeId: recoveryData.activity?.id ?? null,
       notes: recoveryData.notes,
+      category,
     })
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
@@ -486,7 +490,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
         <Group justify="space-between" px={20} py={8} style={{ background: COLORS.mediumGray, borderBottom: `1px solid ${COLORS.borderGray}` }}>
           <Text size="xs" fw={600} c={activeIsRunning ? COLORS.secondaryGreen : COLORS.textMedium}>
-            {activeIsRunning ? `● Recording: ${activityLabel(activeSession.activity, project)}` : '● Ready - Tap a category to start'}
+            {activeIsRunning ? `● Recording: ${activityLabel(activeSession.activity, project, equipmentId)}` : '● Ready - Tap a category to start'}
           </Text>
           <Group gap={8}>
             {projectsOffline && (
@@ -503,7 +507,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         {activeIsRunning && (
           <Group justify="space-between" px={20} py={12} mx={15} my={10} style={{ background: COLORS.warningBg, border: `1px solid ${COLORS.warningBorder}`, borderRadius: 8 }}>
             <Box>
-              <Text size="sm" fw={700}>{activityLabel(activeSession.activity, project)}</Text>
+              <Text size="sm" fw={700}>{activityLabel(activeSession.activity, project, equipmentId)}</Text>
               <Text size="xs" c={COLORS.warningText} style={{ fontVariantNumeric: 'tabular-nums' }}>{formatClock(now - activeSession.startTime.getTime())}</Text>
             </Box>
             <Button size="xs" leftSection={<IconPlayerStopFilled size={12} />} style={{ background: COLORS.accentRed }} onClick={() => endActiveSession()}>
@@ -534,7 +538,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
               textAlign: 'center', opacity: activeIsRunning && activeSession.activity.active ? 0.6 : 1,
             }}
           >
-            {activeTileLabel(project)}
+            {activeTileLabel(project, equipmentId)}
           </UnstyledButton>
 
           {favorites.length > 0 && (
@@ -612,7 +616,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         opened={addPastOpen}
         onClose={() => setAddPastOpen(false)}
         project={project}
-        activeTileLabel={activeTileLabel(project)}
+        activeTileLabel={activeTileLabel(project, equipmentId)}
         onSave={(s) => {
           setSessions((prev) => [{ id: crypto.randomUUID(), ...s }, ...prev])
           saveDailyActivity(createDailyActivity, {
@@ -629,6 +633,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             layerId: s.layerId,
             delayCodeId: s.delayCodeId,
             notes: s.description,
+            category: s.category,
           })
         }}
       />

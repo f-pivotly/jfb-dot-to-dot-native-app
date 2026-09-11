@@ -18,7 +18,7 @@ export function useOfflineSyncQueue({ createDailyActivity }) {
         setPendingItems((prev) => prev.filter((i) => i.local_id !== item.local_id))
         setPendingSyncCount((n) => Math.max(0, n - 1))
       } catch {
-        // Still offline or still failing -- leave it queued, retry next tick.
+        continue
       }
     }
   }, [createDailyActivity])

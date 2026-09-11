@@ -40,10 +40,6 @@ export const theme = createTheme({
   },
 });
 
-// Daily Tracking screen's fixed brand skin (from the original jfb-dot-to-dot PWA).
-// Consumed as flat inline-style values, not through Mantine's color/variant props,
-// so it's kept separate from `theme.colors`/`theme.fontFamily` above rather than
-// forced into Mantine's 10-shade color format.
 export const COLORS = {
   primaryBlue: '#004682',
   primaryBlueDark: '#003366',
