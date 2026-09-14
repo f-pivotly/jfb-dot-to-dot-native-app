@@ -30,6 +30,10 @@ export default function SessionInterruptedScreen({
   const agoMs = now - startDt.getTime()
   const agoH = Math.floor(agoMs / 3600000)
   const agoM = Math.floor((agoMs % 3600000) / 60000)
+  const startDay = startDt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const context = [recoveryData.areaL1, recoveryData.areaL2, recoveryData.areaL3, recoveryData.pass]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.recoveryBg }}>
       <Box p={32} style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', fontFamily: FONT_FAMILY }}>
@@ -39,8 +43,11 @@ export default function SessionInterruptedScreen({
         <Badge size="lg" radius="md" style={{ background: badgeColor, color: '#fff', padding: '10px 22px', height: 'auto', fontSize: 15 }} mb={6}>
           {label}
         </Badge>
-        <Text c="rgba(255,255,255,0.6)" size="sm" mt={8}>Started {formatTimeOfDay(startDt)}</Text>
-        <Text c="rgba(255,255,255,0.4)" size="xs" mb={24}>({agoH > 0 ? `${agoH}h ${agoM}m ago` : `${agoM}m ago`})</Text>
+        <Text c="rgba(255,255,255,0.6)" size="sm" mt={8}>Started {formatTimeOfDay(startDt)} on {startDay}</Text>
+        <Text c="rgba(255,255,255,0.4)" size="xs" mb={context ? 12 : 24}>({agoH > 0 ? `${agoH}h ${agoM}m ago` : `${agoM}m ago`})</Text>
+        {context && (
+          <Text c="rgba(255,255,255,0.5)" size="xs" mb={24}>{context}</Text>
+        )}
         <Text c="rgba(255,255,255,0.6)" size="xs" fw={700} tt="uppercase" mb={10}>What time did it end?</Text>
         <TimeStepper hours={recoveryEndTime.hours} minutes={recoveryEndTime.minutes} onChange={onChangeRecoveryEndTime} />
         <Button fullWidth size="lg" mt={24} style={{ background: COLORS.secondaryGreen }} onClick={onSave}>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { getAllQueueItems, deleteQueueItem } from '../../data/offlineDb'
+import { notifySuccess } from './notify'
 
 export function useOfflineSyncQueue({ createDailyActivity }) {
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
@@ -11,15 +12,20 @@ export function useOfflineSyncQueue({ createDailyActivity }) {
     setPendingItems(ours)
     setPendingSyncCount(ours.length)
     if (!navigator.onLine || !createDailyActivity) return
+    let drained = 0
     for (const item of ours) {
       try {
         await createDailyActivity(item.recordData)
         await deleteQueueItem(item.local_id)
+        drained += 1
         setPendingItems((prev) => prev.filter((i) => i.local_id !== item.local_id))
         setPendingSyncCount((n) => Math.max(0, n - 1))
       } catch {
         continue
       }
+    }
+    if (drained > 0) {
+      notifySuccess(`${drained} session${drained === 1 ? '' : 's'} synced`)
     }
   }, [createDailyActivity])
 

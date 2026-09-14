@@ -1,4 +1,5 @@
 import { enqueueSync } from '../../data/offlineDb'
+import { notifyWarning, notifyError } from './notify'
 
 export async function saveDailyActivity(createFn, {
   projectId, equipmentId, operatorId, sessionId, startTime, endTime,
@@ -30,13 +31,17 @@ export async function saveDailyActivity(createFn, {
     await createFn(recordData)
   } catch (err) {
     console.warn('daily_activities save failed, queued for retry:', err)
-    await enqueueSync({
-      local_id: crypto.randomUUID(),
-      domain: 'jfb_daily_activities',
-      recordData,
-      createdAt: Date.now(),
-    }).catch((queueErr) => {
+    try {
+      await enqueueSync({
+        local_id: crypto.randomUUID(),
+        domain: 'jfb_daily_activities',
+        recordData,
+        createdAt: Date.now(),
+      })
+      notifyWarning('Saved offline', 'This session will sync when the connection comes back.')
+    } catch (queueErr) {
       console.warn('daily_activities queueing also failed (session kept on-screen only):', queueErr)
-    })
+      notifyError('Session not saved', 'It is on this screen only. Leave the app open and tell your PM.')
+    }
   }
 }

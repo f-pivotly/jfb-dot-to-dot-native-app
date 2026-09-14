@@ -16,7 +16,7 @@ export function buildProjects({
   const masterDelayCodeById = new Map(masterDelayCodeRecords.map((m) => [m.id, m]))
   const operatorById = new Map(operatorRecords.map((o) => [o.id, o]))
 
-  return projectRecords.map((p) => {
+  return projectRecords.filter((p) => p.is_active !== false).map((p) => {
     const extras = getProjectExtras(p.name)
 
     const levels = areaLevelRecords.filter((l) => l.project_id === p.id)
@@ -25,7 +25,7 @@ export function buildProjects({
     const level3 = levels.find((l) => l.depth === 3)
     const depthByLevelId = new Map(levels.map((l) => [l.id, l.depth]))
     const areasFlat = areaRecords
-      .filter((a) => a.project_id === p.id)
+      .filter((a) => a.project_id === p.id && a.is_active !== false)
       .map((a) => ({
         id: a.id,
         name: a.name,
@@ -58,7 +58,8 @@ export function buildProjects({
     return {
       id: p.id,
       name: p.name,
-      equipment: equipmentRecords.filter((e) => e.project_id === p.id).map((e) => ({
+      client: p.client_name ?? null,
+      equipment: equipmentRecords.filter((e) => e.project_id === p.id && e.is_active !== false).map((e) => ({
         id: e.id,
         name: e.name,
         workType: e.work_type ?? null,

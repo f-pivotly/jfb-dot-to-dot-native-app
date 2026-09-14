@@ -12,22 +12,34 @@ import ConfirmSetupScreen from './ConfirmSetupScreen'
 import ShiftEndOverlay from './ShiftEndOverlay'
 import SyncStatusModal from './SyncStatusModal'
 import { COLORS, FONT_FAMILY } from '../../theme'
-import { activeTileLabel, activityLabel, delayCategoryOf, groupColor, formatClock, formatDuration, formatTimeOfDay, nowRoundedToFiveMin } from './dailyTrackingFormat'
+import { activeTileLabel, activityLabel, delayCategoryOf, groupColor, formatClock, formatDuration, formatTimeOfDay, hoursAndMinutesOf, localDateKey, nowRoundedToFiveMin, sessionColor, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
+import { putSession, getSessionsForDate, deleteStoredSession } from '../../data/offlineDb'
 import { writeRecovery, clearRecovery } from './recoverySession'
 import { saveDailyActivity } from './saveDailyActivity'
 import { buildProjects, resolvePass } from './projectsViewModel'
 import { useAreaCascade } from './useAreaCascade'
 import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
+import { useLastUsedSelection } from './useLastUsedSelection'
+import { useFavoriteCodes } from './useFavoriteCodes'
+import { notifyInfo, notifySuccess } from './notify'
 import { useDomainSource, useCachedDomainSource } from '../../hooks/useDomainSource'
 import { usePicklist } from '../../hooks/usePicklist'
 import brennanLogo from './assets/brennan-logo.png'
 
 const GAP_THRESHOLD_MS = 60000
+const FUTURE_START_TOLERANCE_MS = 6 * 3600000
+
+function notAfterNow(remembered) {
+  const candidate = new Date()
+  candidate.setHours(remembered.getHours(), remembered.getMinutes(), 0, 0)
+  return candidate > new Date() ? nowRoundedToFiveMin() : hoursAndMinutesOf(remembered)
+}
 
 function sessionRow(fields) {
   return {
     id: crypto.randomUUID(),
+    date: localDateKey(fields.startTime),
     category: fields.category,
     delayCategory: fields.delayCategory ?? null,
     startTime: fields.startTime,
@@ -66,8 +78,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   })
 
   const crashRecovery = useCrashRecovery(projects)
+  const { lastUsed, ready: lastUsedReady, fresh, openShiftToday, remember } = useLastUsedSelection()
 
-  const [step, setStep] = useState(crashRecovery.recovery ? 'sessionInterrupted' : 'project')
+  const [step, setStep] = useState(crashRecovery.recovery ? 'sessionInterrupted' : null)
   const [project, setProject] = useState(null)
   const [equipment, setEquipment] = useState(crashRecovery.recovery?.equipment ?? null)
   const [equipmentId, setEquipmentId] = useState(crashRecovery.recovery?.equipmentId ?? null)
@@ -80,7 +93,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
-  const [favoritesByProject, setFavoritesByProject] = useState({})
+  const { favorites, toggle: toggleFavorite } = useFavoriteCodes(operatorId, project?.id)
   const [now, setNow] = useState(() => Date.now())
   const [syncModalOpen, setSyncModalOpen] = useState(false)
 
@@ -104,16 +117,50 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     return () => clearInterval(id)
   }, [activeSession])
 
-  const favorites = (project && favoritesByProject[project.id]) || []
+  useEffect(() => {
+    let cancelled = false
+    getSessionsForDate(localDateKey())
+      .then((rows) => {
+        if (cancelled || !rows.length) return
+        setSessions(rows.sort((a, b) => b.startTime - a.startTime))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  if (step === null && lastUsedReady && !projectsLoading) {
+    const remembered = fresh ? projects.find((p) => p.id === lastUsed.projectId) : null
+    const unit = remembered?.equipment.find((e) => e.id === lastUsed.equipmentId)
+    const person = remembered?.operators.find((o) => o.id === lastUsed.operatorId)
+
+    if (remembered && unit && person) {
+      setProject(remembered)
+      setEquipment(unit.name)
+      setEquipmentId(unit.id)
+      setOperator(person.name)
+      setOperatorId(person.id)
+      if (openShiftToday) {
+        setSessionId(lastUsed.sessionId ?? null)
+        setShiftStart(new Date(lastUsed.shiftStartISO))
+        setStep('tracking')
+      } else {
+        setStep('confirmSetup')
+      }
+    } else {
+      setStep('project')
+    }
+  }
 
   function selectProject(item) {
     const proj = projects.find((p) => p.id === item.id)
     setProject(proj)
+    remember({ projectId: proj.id })
     areaCascade.reset()
     setPassValue('')
     if (proj.equipment.length === 1) {
       setEquipment(proj.equipment[0].name)
       setEquipmentId(proj.equipment[0].id)
+      remember({ equipmentId: proj.equipment[0].id })
       setStep('operator')
     } else {
       setStep('equipment')
@@ -122,25 +169,47 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   function selectEquipment(item) {
     setEquipment(item.label)
     setEquipmentId(item.id)
+    remember({ equipmentId: item.id })
     setStep('operator')
   }
   function selectOperator(item) {
     setOperator(item.label)
     setOperatorId(item.id)
+    if (item.id) remember({ operatorId: item.id })
+    goToShiftStart()
+  }
+  function goToShiftStart() {
+    const last = lastUsed?.lastShiftStartISO
+    setShiftTime(last ? hoursAndMinutesOf(new Date(last)) : nowRoundedToFiveMin())
     setStep('shiftStart')
+  }
+
+  function openShiftEnd() {
+    const last = lastUsed?.lastShiftEndISO
+    setShiftEndTime(last ? notAfterNow(new Date(last)) : nowRoundedToFiveMin())
+    setShiftEndOpen(true)
+  }
+
+  function beginShift(start) {
+    const newSessionId = crypto.randomUUID()
+    setShiftStart(start)
+    setSessionId(newSessionId)
+    remember({
+      shiftStartISO: start.toISOString(),
+      shiftDate: localDateKey(),
+      sessionId: newSessionId,
+      lastShiftStartISO: start.toISOString(),
+    })
+    setStep('tracking')
   }
   function confirmShiftStart() {
     const d = new Date()
     d.setHours(shiftTime.hours, shiftTime.minutes, 0, 0)
-    if (d > new Date()) d.setDate(d.getDate() - 1)
-    setShiftStart(d)
-    setSessionId(crypto.randomUUID())
-    setStep('tracking')
+    if (d - Date.now() > FUTURE_START_TOLERANCE_MS) d.setDate(d.getDate() - 1)
+    beginShift(d)
   }
   function skipShiftStart() {
-    setShiftStart(new Date())
-    setSessionId(crypto.randomUUID())
-    setStep('tracking')
+    beginShift(new Date())
   }
 
   function persistActiveSession(session) {
@@ -170,7 +239,9 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   }
 
   function recordSession(fields, overrides = {}) {
-    setSessions((prev) => [sessionRow(fields), ...prev])
+    const row = sessionRow(fields)
+    setSessions((prev) => [row, ...prev])
+    putSession(row).catch(() => {})
     saveDailyActivity(createDailyActivity, {
       projectId: project?.id,
       equipmentId,
@@ -216,6 +287,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       lane: cur.lane,
       step: cur.step,
     })
+    notifySuccess('Session saved')
   }
 
   function latestSessionEnd() {
@@ -240,8 +312,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     }
 
     recordSession({
-      category: 'STARTUP/SHUTDOWN',
-      delayCategory: 'Startup/Shutdown',
+      category: STARTUP_SHUTDOWN_LABEL,
+      delayCategory: STARTUP_SHUTDOWN_CATEGORY,
       startTime: gapStart,
       endTime: gapEnd,
       operatorName: operator,
@@ -269,6 +341,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setActiveSession(session)
     setNow(Date.now())
     persistActiveSession(session)
+    notifyInfo(`Started: ${activityLabel(activity, project, equipmentId)}`)
   }
 
   function handleActivityClick(activity) {
@@ -287,16 +360,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setPendingActivity(null)
   }
 
-  function toggleFavorite(codeNum) {
-    setFavoritesByProject((prev) => {
-      const cur = prev[project.id] || []
-      const next = cur.includes(codeNum) ? cur.filter((c) => c !== codeNum) : [...cur, codeNum].slice(-5)
-      return { ...prev, [project.id]: next }
-    })
-  }
-
   function deleteSession(id) {
     setSessions((prev) => prev.filter((s) => s.id !== id))
+    deleteStoredSession(id).catch(() => {})
+    notifyInfo('Session removed from this device', 'The synced record is unchanged.')
   }
 
   function confirmShiftEnd(explicitEnd) {
@@ -310,8 +377,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     } else {
       recordGap(end, { atShiftEnd: true })
     }
+    remember({ shiftStartISO: null, shiftDate: null, sessionId: null, lastShiftEndISO: end.toISOString() })
     setShiftEndOpen(false)
     setStep('confirmSetup')
+    notifySuccess('Day logged')
   }
 
   function adoptRecoveredContext(recoveryData, recoveredProject) {
@@ -356,11 +425,27 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     })
     crashRecovery.clear()
     adoptRecoveredContext(recoveryData, recoveredProject)
+    notifySuccess('Session recovered')
   }
   function discardRecoveredSession() {
     const { recoveryData, recoveredProject } = crashRecovery
     crashRecovery.clear()
     adoptRecoveredContext(recoveryData, recoveredProject)
+    notifyInfo('Session discarded')
+  }
+
+  if (step === null) {
+    return (
+      <Box
+        style={{
+          flex: 1, minHeight: 0, background: COLORS.primaryBlue, fontFamily: FONT_FAMILY,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14,
+        }}
+      >
+        <Image src={brennanLogo} h={44} fit="contain" />
+        <Text size="sm" c="rgba(255,255,255,0.55)">Checking for an open shift…</Text>
+      </Box>
+    )
   }
 
   if (step === 'sessionInterrupted' && crashRecovery.recoveryData) {
@@ -383,8 +468,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       <PickerScreen
         title="Select Project"
         subtitle={projectsLoading ? 'Loading projects…' : projectsOffline ? 'Offline — showing last-synced projects' : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-        items={projects.map((p) => ({ id: p.id, label: p.name }))}
-        selectedId={project?.id}
+        items={projects.map((p) => ({ id: p.id, label: p.name, sub: p.client }))}
+        selectedId={project?.id ?? lastUsed?.projectId}
         onSelect={selectProject}
       />
     )
@@ -395,7 +480,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         title="Select Equipment"
         subtitle={project.name}
         items={project.equipment.map((e) => ({ id: e.id, label: e.name }))}
-        selectedId={equipmentId}
+        selectedId={equipmentId ?? lastUsed?.equipmentId}
         onSelect={selectEquipment}
         onBack={() => setStep('project')}
       />
@@ -406,8 +491,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       <PickerScreen
         title="Who is operating?"
         subtitle={`${equipment} · ${project.name}`}
-        items={project.operators.map((o) => ({ id: o.id, label: o.name }))}
-        selectedId={operatorId}
+        items={project.operators.map((o) => ({ id: o.id, label: o.name, initials: true }))}
+        selectedId={operatorId ?? lastUsed?.operatorId}
+        allowTextFallback={project.operators.length === 0}
+        fallbackNotice="No operators are set up on this project. Your name shows on this device only — the sessions will save without an operator until a PM adds you to the project."
         onSelect={selectOperator}
         onBack={() => setStep(project.equipment.length > 1 ? 'equipment' : 'project')}
       />
@@ -436,7 +523,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         onEditProject={() => setStep('project')}
         onEditEquipment={() => setStep('equipment')}
         onEditOperator={() => setStep('operator')}
-        onConfirm={() => setStep('shiftStart')}
+        onConfirm={goToShiftStart}
       />
     )
   }
@@ -482,7 +569,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
               >
                 {pendingSyncCount > 0 ? `⏳ ${pendingSyncCount} Pending` : '✓ Synced'}
               </Button>
-              <Button style={{ background: COLORS.primaryBlue }} onClick={() => setShiftEndOpen(true)}>
+              <Button style={{ background: COLORS.primaryBlue }} onClick={openShiftEnd}>
                 End of Day
               </Button>
             </Group>
@@ -580,7 +667,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           ) : (
             sessions.map((s) => (
               <Group key={s.id} wrap="nowrap" style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                <Box style={{ width: 5, height: 34, borderRadius: 3, background: groupColor(project, s.delayCategory), flexShrink: 0 }} />
+                <Box style={{ width: 5, height: 34, borderRadius: 3, background: sessionColor(project, s), flexShrink: 0 }} />
                 <Box style={{ flex: 1, minWidth: 0 }}>
                   <Text size="sm" fw={700} c={COLORS.textDark} truncate>
                     {s.category}{s.lane ? ` · Lane ${s.lane}` : ''}{s.step ? ` / Step ${s.step}` : ''}
@@ -612,7 +699,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         onClose={() => setAddPastOpen(false)}
         project={project}
         activeTileLabel={activeTileLabel(project, equipmentId)}
-        onSave={(s) => recordSession(s, { operatorId: s.operatorId })}
+        onSave={(s) => {
+          recordSession(s, { operatorId: s.operatorId })
+          notifySuccess('Past session added')
+        }}
       />
 
       <SyncStatusModal

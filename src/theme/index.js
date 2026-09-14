@@ -51,6 +51,7 @@ export const COLORS = {
   warningBg: '#FFF3CD',
   warningBorder: '#FFE69C',
   warningText: '#856404',
+  startupShutdown: '#708090',
   recoveryBg: '#1a1a2e',
   shiftEndBg: '#0F2744',
   shiftEndAccent: '#1A5CA8',

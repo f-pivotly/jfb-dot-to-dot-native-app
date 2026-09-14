@@ -1,9 +1,10 @@
 const DB_NAME = 'jfb-dot-to-dot-data'
-const VERSION = 1
+const VERSION = 2
 
 const STORE_QUEUE = 'sync_queue'
 const STORE_SHELL = 'app_shell_cache'
 const STORE_CACHE = 'records_by_domain'
+const STORE_SESSIONS = 'sessions'
 
 let dbPromise = null
 
@@ -22,6 +23,10 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_CACHE)) {
         const cacheStore = db.createObjectStore(STORE_CACHE, { keyPath: 'cache_key' })
         cacheStore.createIndex('domain_idx', 'domain')
+      }
+      if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
+        const sessionStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' })
+        sessionStore.createIndex('date_idx', 'date')
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -85,6 +90,24 @@ export async function cacheRecords(domain, records) {
     os.put({ cache_key: `${domain}::${record.id}`, domain, record })
   })
   return wrapTx(tx)
+}
+
+export async function putSession(session) {
+  if (!session?.id) return
+  const db = await openDB()
+  return wrap(store(db, STORE_SESSIONS, 'readwrite').put(session))
+}
+
+export async function getSessionsForDate(date) {
+  if (!date) return []
+  const db = await openDB()
+  const idx = store(db, STORE_SESSIONS, 'readonly').index('date_idx')
+  return wrap(idx.getAll(date))
+}
+
+export async function deleteStoredSession(id) {
+  const db = await openDB()
+  return wrap(store(db, STORE_SESSIONS, 'readwrite').delete(id))
 }
 
 export async function getCachedRecords(domain) {
