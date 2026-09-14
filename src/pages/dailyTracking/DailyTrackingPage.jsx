@@ -23,6 +23,8 @@ import { useDomainSource, useCachedDomainSource } from '../../hooks/useDomainSou
 import { usePicklist } from '../../hooks/usePicklist'
 import brennanLogo from './assets/brennan-logo.png'
 
+const GAP_THRESHOLD_MS = 60000
+
 function sessionRow(fields) {
   return {
     id: crypto.randomUUID(),
@@ -54,7 +56,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { records: masterDelayCodeRecords } = useCachedDomainSource(domainSources, 'jfb_delay_codes')
   const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
 
-  const { create: createDailyActivity } = useDomainSource(domainSources, 'jfb_daily_activities')
+  const { create: createDailyActivity } = useDomainSource(domainSources, 'jfb_daily_activities', { autoLoad: false })
 
   const passOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
 
@@ -73,6 +75,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [operatorId, setOperatorId] = useState(crashRecovery.recovery?.operatorId ?? null)
   const [sessionId, setSessionId] = useState(crashRecovery.recovery?.sessionId ?? null)
   const [shiftStart, setShiftStart] = useState(null)
+  const [gapAnchor, setGapAnchor] = useState(null)
   const [shiftTime, setShiftTime] = useState(nowRoundedToFiveMin)
 
   const [sessions, setSessions] = useState([])
@@ -150,6 +153,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       sessionId,
       activity: session.activity,
       startTimeISO: session.startTime.toISOString(),
+      shiftStartISO: shiftStart ? shiftStart.toISOString() : null,
       areaL1: session.areaL1,
       areaL2: session.areaL2,
       areaL3: session.areaL3,
@@ -214,11 +218,47 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     })
   }
 
+  function latestSessionEnd() {
+    return sessions.reduce((latest, s) => (!latest || s.endTime > latest ? s.endTime : latest), null)
+  }
+
+  function recordGap(gapEnd, { atShiftEnd = false } = {}) {
+    const previousEnd = latestSessionEnd() ?? gapAnchor
+    const startsShift = !previousEnd || (!!shiftStart && previousEnd < shiftStart)
+    const gapStart = startsShift ? shiftStart : previousEnd
+    if (!gapStart || gapEnd - gapStart <= GAP_THRESHOLD_MS) return
+
+    let description
+    if (atShiftEnd) {
+      description = startsShift
+        ? 'Full shift startup/shutdown (auto-logged)'
+        : 'Post-shift / ride back to shore (auto-logged)'
+    } else {
+      description = startsShift
+        ? 'Pre-work startup (auto-logged)'
+        : 'Between sessions (auto-logged)'
+    }
+
+    recordSession({
+      category: 'STARTUP/SHUTDOWN',
+      delayCategory: 'Startup/Shutdown',
+      startTime: gapStart,
+      endTime: gapEnd,
+      operatorName: operator,
+      description,
+    }, { notes: null })
+  }
+
   function startSession(activity, lane, stepVal) {
-    if (activeSession) endActiveSession()
+    const startTime = new Date()
+    if (activeSession) {
+      endActiveSession(startTime)
+    } else {
+      recordGap(startTime)
+    }
     const session = {
       activity,
-      startTime: new Date(),
+      startTime,
       ...areaCascade.labels,
       ...areaCascade.ids,
       ...resolvePass(project, passValue),
@@ -259,30 +299,24 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setSessions((prev) => prev.filter((s) => s.id !== id))
   }
 
-  function confirmShiftEnd() {
-    const end = new Date()
-    end.setHours(shiftEndTime.hours, shiftEndTime.minutes, 0, 0)
-    if (activeSession) endActiveSession(end)
-
-    const sorted = [...sessions].sort((a, b) => a.startTime - b.startTime)
-    const gapStart = sorted.length === 0 ? shiftStart : sorted.at(-1).endTime
-    if (gapStart && end - gapStart > 60000) {
-      recordSession({
-        category: 'STARTUP/SHUTDOWN',
-        delayCategory: 'Startup/Shutdown',
-        startTime: gapStart,
-        endTime: end,
-        operatorName: operator,
-        description: sorted.length === 0
-          ? 'Full shift startup/shutdown (auto-logged)'
-          : 'Post-shift / ride back to shore (auto-logged)',
-      }, { notes: null })
+  function confirmShiftEnd(explicitEnd) {
+    let end = explicitEnd
+    if (!end) {
+      end = new Date()
+      end.setHours(shiftEndTime.hours, shiftEndTime.minutes, 0, 0)
+    }
+    if (activeSession) {
+      endActiveSession(end)
+    } else {
+      recordGap(end, { atShiftEnd: true })
     }
     setShiftEndOpen(false)
     setStep('confirmSetup')
   }
 
   function adoptRecoveredContext(recoveryData, recoveredProject) {
+    setShiftStart(recoveryData.shiftStartISO ? new Date(recoveryData.shiftStartISO) : null)
+    setGapAnchor(new Date(recoveryData.startTimeISO))
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
     setEquipmentId(recoveryData.equipmentId)
@@ -594,7 +628,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         opened={shiftEndOpen}
         shiftEndTime={shiftEndTime}
         onChangeShiftEndTime={setShiftEndTime}
-        onConfirm={confirmShiftEnd}
+        onConfirm={() => confirmShiftEnd()}
+        onSkip={() => confirmShiftEnd(new Date())}
       />
     </ScrollArea>
   )

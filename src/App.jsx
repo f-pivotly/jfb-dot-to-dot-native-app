@@ -1,10 +1,9 @@
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
 import { Box, Text, Loader, Center } from "@mantine/core";
 import PageContent from "./pages/ContentRouter";
 import DailyTrackingPage from "./pages/dailyTracking/DailyTrackingPage";
 
-import { useNav } from "./hooks/useNav";
+import { useAppShell } from "./hooks/useAppShell";
 import { usePageDetails } from "./hooks/usePageDetails";
 import { useAppConfig } from "./contexts/pivotlyAppConfigContext";
 import { usePicklistCatalog } from "./hooks/usePicklistCatalog";
@@ -34,17 +33,27 @@ function BootNotice({ loading, message, detail }) {
 }
 
 export default function App() {
-  const { pathname } = useLocation();
   const { ready, error: configError, fromCache: configFromCache } = useAppConfig();
   const { loading: picklistsLoading, missing: missingPicklists } = usePicklistCatalog(REQUIRED_PICKLISTS);
 
-  const { menuItems, defaultItem, dataAccess, fromCache: navFromCache } = useNav();
-  const { pageData, slug, loadPage, fromCache: pageFromCache } = usePageDetails();
+  const {
+    page,
+    dataAccess,
+    loading: shellLoading,
+    error: shellError,
+    fromCache: shellFromCache,
+  } = useAppShell();
+  const {
+    pageData,
+    error: pageError,
+    slug,
+    loadPage,
+    fromCache: pageFromCache,
+  } = usePageDetails();
 
-  const usingCachedShell = configFromCache || navFromCache || pageFromCache;
+  const usingCachedShell = configFromCache || shellFromCache || pageFromCache;
 
-  const activeItem = menuItems.find((n) => n.path === pathname) ?? defaultItem ?? null;
-  const resolvedSlug = activeItem?.page_slug ?? null;
+  const resolvedSlug = page?.page_slug ?? null;
 
   const hasShellDataAccess = dataAccess.some((s) => s?.source_type === "domain" && s?.domain);
 
@@ -73,26 +82,26 @@ export default function App() {
     );
   }
 
+  if (shellLoading) {
+    return <BootNotice loading message="Loading app…" />;
+  }
+
+  if (shellError) {
+    return <BootNotice message="Could not load the app" detail={shellError} />;
+  }
+
   let mainContent;
-  if (activeItem) {
+  if (page && pageError) {
+    mainContent = <BootNotice message="Could not load the page" detail={pageError} />;
+  } else if (page && !pageData) {
+    mainContent = <BootNotice loading message="Loading page…" />;
+  } else if (page) {
     mainContent = <PageContent pageData={pageData} />;
   } else if (hasShellDataAccess) {
     mainContent = <DailyTrackingPage domainSources={dataAccess} />;
   } else {
     mainContent = (
-      <Box
-        style={{
-          height: "80vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          fontSize: 24,
-          fontWeight: "bold",
-          opacity: 0.7,
-        }}
-      >
-        Select navigation item above
-      </Box>
+      <BootNotice message="This app has no page or data source configured." />
     );
   }
 

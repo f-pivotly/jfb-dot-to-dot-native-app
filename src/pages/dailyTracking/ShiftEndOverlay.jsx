@@ -2,7 +2,7 @@ import { Box, Text, Button, UnstyledButton } from '@mantine/core'
 import TimeStepper from './TimeStepper'
 import { COLORS, FONT_FAMILY } from '../../theme'
 
-export default function ShiftEndOverlay({ opened, shiftEndTime, onChangeShiftEndTime, onConfirm }) {
+export default function ShiftEndOverlay({ opened, shiftEndTime, onChangeShiftEndTime, onConfirm, onSkip }) {
   if (!opened) return null
   return (
     <Box style={{ position: 'fixed', inset: 0, background: COLORS.shiftEndBg, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -13,7 +13,7 @@ export default function ShiftEndOverlay({ opened, shiftEndTime, onChangeShiftEnd
         <Button fullWidth size="lg" mt={24} style={{ background: COLORS.shiftEndAccent }} onClick={onConfirm}>
           Confirm Shift End →
         </Button>
-        <UnstyledButton mt={12} onClick={onConfirm} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
+        <UnstyledButton mt={12} onClick={onSkip} style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
           Skip — use current time
         </UnstyledButton>
       </Box>

@@ -3,11 +3,12 @@ import { fetchAppResolve } from "../data";
 import { useAppConfig } from "../contexts/pivotlyAppConfigContext";
 import { getShellCache, setShellCache } from "../data/offlineDb";
 
-const NAV_CACHE_KEY = "nav";
+const SHELL_CACHE_KEY = "nav";
+const PAGE_SLUG = "apg-jfb-dot-to-dot-daily-event";
 
-export function useNav() {
+export function useAppShell() {
   const { config } = useAppConfig();
-  const [navItems, setNavItems] = useState([]);
+  const [pages, setPages] = useState([]);
   const [dataAccess, setDataAccess] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,17 +18,17 @@ export function useNav() {
     if (!config.appSlug) return;
     fetchAppResolve(config.appSlug)
       .then((resolved) => {
-        const pages = resolved?.app?.pages ?? [];
+        const resolvedPages = resolved?.app?.pages ?? [];
         const access = resolved?.data_access ?? [];
-        setNavItems(pages);
+        setPages(resolvedPages);
         setDataAccess(access);
         setFromCache(false);
-        setShellCache(NAV_CACHE_KEY, { pages, dataAccess: access });
+        setShellCache(SHELL_CACHE_KEY, { pages: resolvedPages, dataAccess: access });
       })
       .catch((err) =>
-        getShellCache(NAV_CACHE_KEY).then((cached) => {
+        getShellCache(SHELL_CACHE_KEY).then((cached) => {
           if (cached?.pages?.length || cached?.dataAccess?.length) {
-            setNavItems(cached.pages ?? []);
+            setPages(cached.pages ?? []);
             setDataAccess(cached.dataAccess ?? []);
             setFromCache(true);
           } else {
@@ -38,13 +39,7 @@ export function useNav() {
       .finally(() => setLoading(false));
   }, [config.appSlug]);
 
-  const apiMenuItems = navItems.filter((n) => n.show_in_menu && n.visible);
+  const page = pages.find((p) => p.page_slug === PAGE_SLUG) ?? null;
 
-  const menuItems = [...apiMenuItems].sort(
-    (a, b) => a.display_order - b.display_order,
-  );
-
-  const defaultItem = menuItems.find((n) => n.page_slug === 'apg-jfb-dot-to-dot-daily-event') ?? null;
-
-  return { menuItems, defaultItem, dataAccess, loading, error, fromCache };
+  return { page, dataAccess, loading, error, fromCache };
 }

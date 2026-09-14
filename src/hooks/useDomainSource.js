@@ -12,7 +12,7 @@ export function useCachedDomainSource(dataAccess, domain) {
   return useCachedDomainData({ domain: source?.domain, system: source?.system })
 }
 
-export function useDomainSource(dataAccess, domain) {
+export function useDomainSource(dataAccess, domain, { autoLoad = true } = {}) {
   const source = findDomainSource(dataAccess, domain)
-  return useDomainData({ domain: source?.domain, system: source?.system })
+  return useDomainData({ domain: source?.domain, system: source?.system, autoLoad })
 }

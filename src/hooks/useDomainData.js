@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchDomainRecords, createDomainRecord } from '../data'
 import { useAppConfig } from '../contexts/pivotlyAppConfigContext'
 
-export function useDomainData({ domain, system }) {
+export function useDomainData({ domain, system, autoLoad = true }) {
   const { config } = useAppConfig()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
@@ -26,16 +26,17 @@ export function useDomainData({ domain, system }) {
   }, [domain, system, config.appSlug])
 
   useEffect(() => {
+    if (!autoLoad) return
     cancelledRef.current = false
     load()
     return () => { cancelledRef.current = true }
-  }, [load])
+  }, [load, autoLoad])
 
   const create = useCallback(async (recordData) => {
     const res = await createDomainRecord({ domain, system, appSlug: config.appSlug, recordData })
-    await load()
+    if (autoLoad) await load()
     return res
-  }, [domain, system, config.appSlug, load])
+  }, [domain, system, config.appSlug, load, autoLoad])
 
   return { records, loading, error, create }
 }
