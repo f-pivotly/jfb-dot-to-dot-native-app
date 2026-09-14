@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { readRecovery, clearRecovery } from './recoverySession'
+import { nowRoundedToFiveMin } from './dailyTrackingFormat'
 
 export function useCrashRecovery(projects) {
   const [recovery] = useState(readRecovery)
   const recoveredProject = recovery ? projects.find((p) => p.id === recovery.projectId) : null
   const [recoveryData, setRecoveryData] = useState(recovery)
-  const [recoveryEndTime, setRecoveryEndTime] = useState(() => {
-    const rounded = new Date(Math.round(Date.now() / 300000) * 300000)
-    return { hours: rounded.getHours(), minutes: rounded.getMinutes() }
-  })
+  const [recoveryEndTime, setRecoveryEndTime] = useState(nowRoundedToFiveMin)
 
   function buildRecoveredSession() {
     const start = new Date(recoveryData.startTimeISO)

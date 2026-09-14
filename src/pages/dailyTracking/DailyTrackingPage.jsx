@@ -5,49 +5,56 @@ import PickerScreen from './PickerScreen'
 import LaneStepModal from './LaneStepModal'
 import AddPastSessionModal from './AddPastSessionModal'
 import TileButton from './TileButton'
+import AreaCascadeSelects from './AreaCascadeSelects'
 import SessionInterruptedScreen from './SessionInterruptedScreen'
 import ShiftStartScreen from './ShiftStartScreen'
 import ConfirmSetupScreen from './ConfirmSetupScreen'
 import ShiftEndOverlay from './ShiftEndOverlay'
 import SyncStatusModal from './SyncStatusModal'
 import { COLORS, FONT_FAMILY } from '../../theme'
-import { activeTileLabel, activityLabel, groupColor, formatClock, formatDuration, formatTimeOfDay } from './dailyTrackingFormat'
+import { activeTileLabel, activityLabel, delayCategoryOf, groupColor, formatClock, formatDuration, formatTimeOfDay, nowRoundedToFiveMin } from './dailyTrackingFormat'
 import { writeRecovery, clearRecovery } from './recoverySession'
 import { saveDailyActivity } from './saveDailyActivity'
-import { buildProjects } from './projectsViewModel'
+import { buildProjects, resolvePass } from './projectsViewModel'
 import { useAreaCascade } from './useAreaCascade'
 import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
-import { useDomainData } from '../../hooks/useDomainData'
-import { useCachedDomainData } from '../../hooks/useCachedDomainData'
+import { useDomainSource, useCachedDomainSource } from '../../hooks/useDomainSource'
 import { usePicklist } from '../../hooks/usePicklist'
-import { findDomainSource } from '../../helpers/formatting'
 import brennanLogo from './assets/brennan-logo.png'
 
-export default function DailyTrackingPage({ domainSources = [] }) {
-  const projectsSource = findDomainSource(domainSources, 'jfb_projects')
-  const operatorsSource = findDomainSource(domainSources, 'jfb_operators')
-  const projectOperatorsSource = findDomainSource(domainSources, 'jfb_project_operators')
-  const equipmentsSource = findDomainSource(domainSources, 'jfb_equipments')
-  const dailyActivitiesSource = findDomainSource(domainSources, 'jfb_daily_activities')
-  const areasSource = findDomainSource(domainSources, 'jfb_project_areas')
-  const areaLevelsSource = findDomainSource(domainSources, 'jfb_project_area_levels')
-  const layersSource = findDomainSource(domainSources, 'jfb_project_layers')
-  const projectDelayCodesSource = findDomainSource(domainSources, 'jfb_project_delay_codes')
-  const masterDelayCodesSource = findDomainSource(domainSources, 'jfb_delay_codes')
+function sessionRow(fields) {
+  return {
+    id: crypto.randomUUID(),
+    category: fields.category,
+    delayCategory: fields.delayCategory ?? null,
+    startTime: fields.startTime,
+    endTime: fields.endTime,
+    durationMs: fields.endTime - fields.startTime,
+    operatorName: fields.operatorName,
+    areaL1: fields.areaL1,
+    areaL2: fields.areaL2,
+    areaL3: fields.areaL3,
+    pass: fields.pass,
+    description: fields.description,
+    lane: fields.lane,
+    step: fields.step,
+  }
+}
 
-  const { records: projectRecords, loading: projectsLoading, offline: projectsOffline } = useCachedDomainData({ domain: projectsSource?.domain, system: projectsSource?.system })
-  const { records: operatorRecords } = useCachedDomainData({ domain: operatorsSource?.domain, system: operatorsSource?.system })
-  const { records: projectOperatorRecords } = useCachedDomainData({ domain: projectOperatorsSource?.domain, system: projectOperatorsSource?.system })
-  const { records: equipmentRecords } = useCachedDomainData({ domain: equipmentsSource?.domain, system: equipmentsSource?.system })
-  const { records: areaRecords } = useCachedDomainData({ domain: areasSource?.domain, system: areasSource?.system })
-  const { records: areaLevelRecords } = useCachedDomainData({ domain: areaLevelsSource?.domain, system: areaLevelsSource?.system })
-  const { records: layerRecords } = useCachedDomainData({ domain: layersSource?.domain, system: layersSource?.system })
-  const { records: projectDelayCodeRecords } = useCachedDomainData({ domain: projectDelayCodesSource?.domain, system: projectDelayCodesSource?.system })
-  const { records: masterDelayCodeRecords } = useCachedDomainData({ domain: masterDelayCodesSource?.domain, system: masterDelayCodesSource?.system })
+export default function DailyTrackingPage({ domainSources = [] }) {
+  const { records: projectRecords, loading: projectsLoading, offline: projectsOffline } = useCachedDomainSource(domainSources, 'jfb_projects')
+  const { records: operatorRecords } = useCachedDomainSource(domainSources, 'jfb_operators')
+  const { records: projectOperatorRecords } = useCachedDomainSource(domainSources, 'jfb_project_operators')
+  const { records: equipmentRecords } = useCachedDomainSource(domainSources, 'jfb_equipments')
+  const { records: areaRecords } = useCachedDomainSource(domainSources, 'jfb_project_areas')
+  const { records: areaLevelRecords } = useCachedDomainSource(domainSources, 'jfb_project_area_levels')
+  const { records: layerRecords } = useCachedDomainSource(domainSources, 'jfb_project_layers')
+  const { records: projectDelayCodeRecords } = useCachedDomainSource(domainSources, 'jfb_project_delay_codes')
+  const { records: masterDelayCodeRecords } = useCachedDomainSource(domainSources, 'jfb_delay_codes')
   const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
 
-  const { create: createDailyActivity } = useDomainData({ domain: dailyActivitiesSource?.domain, system: dailyActivitiesSource?.system })
+  const { create: createDailyActivity } = useDomainSource(domainSources, 'jfb_daily_activities')
 
   const passOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
 
@@ -66,10 +73,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [operatorId, setOperatorId] = useState(crashRecovery.recovery?.operatorId ?? null)
   const [sessionId, setSessionId] = useState(crashRecovery.recovery?.sessionId ?? null)
   const [shiftStart, setShiftStart] = useState(null)
-  const [shiftTime, setShiftTime] = useState(() => {
-    const d = new Date(Math.round(Date.now() / 300000) * 300000)
-    return { hours: d.getHours(), minutes: d.getMinutes() }
-  })
+  const [shiftTime, setShiftTime] = useState(nowRoundedToFiveMin)
 
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
@@ -87,10 +91,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [pendingActivity, setPendingActivity] = useState(null)
   const [addPastOpen, setAddPastOpen] = useState(false)
   const [shiftEndOpen, setShiftEndOpen] = useState(false)
-  const [shiftEndTime, setShiftEndTime] = useState(() => {
-    const d = new Date(Math.round(Date.now() / 300000) * 300000)
-    return { hours: d.getHours(), minutes: d.getMinutes() }
-  })
+  const [shiftEndTime, setShiftEndTime] = useState(nowRoundedToFiveMin)
 
   const { pendingSyncCount, pendingItems, drainQueue } = useOfflineSyncQueue({ createDailyActivity })
 
@@ -164,69 +165,63 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     })
   }
 
+  function recordSession(fields, overrides = {}) {
+    setSessions((prev) => [sessionRow(fields), ...prev])
+    saveDailyActivity(createDailyActivity, {
+      projectId: project?.id,
+      equipmentId,
+      operatorId,
+      sessionId,
+      startTime: fields.startTime,
+      endTime: fields.endTime,
+      areaId: fields.areaId,
+      subAreaId: fields.subAreaId,
+      subSubAreaId: fields.subSubAreaId,
+      passType: fields.passType,
+      layerId: fields.layerId,
+      delayCodeId: fields.delayCodeId,
+      notes: fields.description,
+      category: fields.category,
+      ...overrides,
+    })
+  }
+
   function endActiveSession(endTime) {
-    setActiveSession((cur) => {
-      if (!cur) return cur
-      const end = endTime || new Date()
-      const category = cur.activity.active ? activeTileLabel(project, equipmentId) : cur.activity.code
-      setSessions((prev) => [{
-        id: crypto.randomUUID(),
-        category,
-        delayCategory: cur.activity.active ? null : cur.activity.category,
-        startTime: cur.startTime,
-        endTime: end,
-        durationMs: end - cur.startTime,
-        operatorName: operator,
-        areaL1: cur.areaL1,
-        areaL2: cur.areaL2,
-        areaL3: cur.areaL3,
-        pass: cur.pass,
-        description: cur.notes,
-        lane: cur.lane,
-        step: cur.step,
-      }, ...prev])
-      clearRecovery()
-      saveDailyActivity(createDailyActivity, {
-        projectId: project.id,
-        equipmentId,
-        operatorId,
-        sessionId,
-        startTime: cur.startTime,
-        endTime: end,
-        areaId: cur.areaId,
-        subAreaId: cur.subAreaId,
-        subSubAreaId: cur.subSubAreaId,
-        passType: cur.passType,
-        layerId: cur.layerId,
-        delayCodeId: cur.activity?.id ?? null,
-        notes: cur.notes,
-        category,
-      })
-      return null
+    const cur = activeSession
+    if (!cur) return
+    const end = endTime || new Date()
+    setActiveSession(null)
+    clearRecovery()
+    recordSession({
+      category: activityLabel(cur.activity, project, equipmentId),
+      delayCategory: delayCategoryOf(cur.activity),
+      startTime: cur.startTime,
+      endTime: end,
+      operatorName: operator,
+      areaL1: cur.areaL1,
+      areaL2: cur.areaL2,
+      areaL3: cur.areaL3,
+      areaId: cur.areaId,
+      subAreaId: cur.subAreaId,
+      subSubAreaId: cur.subSubAreaId,
+      pass: cur.pass,
+      passType: cur.passType,
+      layerId: cur.layerId,
+      delayCodeId: cur.activity?.id ?? null,
+      description: cur.notes,
+      lane: cur.lane,
+      step: cur.step,
     })
   }
 
   function startSession(activity, lane, stepVal) {
     if (activeSession) endActiveSession()
-    const isMulti = project.isMultiLayerProject
-    let passLabel = ''
-    if (isMulti) {
-      passLabel = (project.layers || []).find((l) => l.id === passValue)?.layer_name ?? ''
-    } else if (passValue) {
-      passLabel = passTypeLabels[passValue] ?? passValue
-    }
     const session = {
       activity,
       startTime: new Date(),
-      areaL1: areaCascade.labelForValue(areaCascade.areaOptions, areaCascade.areaValue),
-      areaL2: areaCascade.labelForValue(areaCascade.subAreaOptions, areaCascade.subAreaValue),
-      areaL3: areaCascade.labelForValue(areaCascade.subSubAreaOptions, areaCascade.subSubAreaValue),
-      areaId: areaCascade.areaValue || null,
-      subAreaId: areaCascade.subAreaValue || null,
-      subSubAreaId: areaCascade.subSubAreaValue || null,
-      pass: passLabel,
-      passType: isMulti ? null : (passValue || null),
-      layerId: isMulti ? (passValue || null) : null,
+      ...areaCascade.labels,
+      ...areaCascade.ids,
+      ...resolvePass(project, passValue),
       notes,
       lane: lane || '',
       step: stepVal || '',
@@ -270,78 +265,24 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     if (activeSession) endActiveSession(end)
 
     const sorted = [...sessions].sort((a, b) => a.startTime - b.startTime)
-    const gaps = []
-    if (sorted.length === 0 && shiftStart) {
-      const totalMs = end - shiftStart
-      if (totalMs > 60000) {
-        gaps.push({
-          id: crypto.randomUUID(), category: 'STARTUP/SHUTDOWN', delayCategory: 'Startup/Shutdown',
-          startTime: shiftStart, endTime: end, durationMs: totalMs, operatorName: operator,
-          description: 'Full shift startup/shutdown (auto-logged)',
-        })
-      }
-    } else if (sorted.length > 0) {
-      const lastEnd = sorted.at(-1).endTime
-      const gapMs = end - lastEnd
-      if (gapMs > 60000) {
-        gaps.push({
-          id: crypto.randomUUID(), category: 'STARTUP/SHUTDOWN', delayCategory: 'Startup/Shutdown',
-          startTime: lastEnd, endTime: end, durationMs: gapMs, operatorName: operator,
-          description: 'Post-shift / ride back to shore (auto-logged)',
-        })
-      }
-    }
-    if (gaps.length) {
-      setSessions((prev) => [...gaps, ...prev])
-      gaps.forEach((gap) => {
-        saveDailyActivity(createDailyActivity, {
-          projectId: project.id,
-          equipmentId,
-          operatorId,
-          sessionId,
-          startTime: gap.startTime,
-          endTime: gap.endTime,
-          category: gap.category,
-        })
-      })
+    const gapStart = sorted.length === 0 ? shiftStart : sorted.at(-1).endTime
+    if (gapStart && end - gapStart > 60000) {
+      recordSession({
+        category: 'STARTUP/SHUTDOWN',
+        delayCategory: 'Startup/Shutdown',
+        startTime: gapStart,
+        endTime: end,
+        operatorName: operator,
+        description: sorted.length === 0
+          ? 'Full shift startup/shutdown (auto-logged)'
+          : 'Post-shift / ride back to shore (auto-logged)',
+      }, { notes: null })
     }
     setShiftEndOpen(false)
     setStep('confirmSetup')
   }
 
-  function saveRecoveredSession() {
-    const { recoveryData, recoveredProject } = crashRecovery
-    const { start, end } = crashRecovery.buildRecoveredSession()
-    const category = recoveryData.activity.active
-      ? activeTileLabel(recoveredProject, recoveryData.equipmentId)
-      : recoveryData.activity.code
-    setSessions((prev) => [{
-      id: crypto.randomUUID(),
-      category,
-      delayCategory: recoveryData.activity.active ? null : recoveryData.activity.category,
-      startTime: start, endTime: end, durationMs: end - start,
-      operatorName: recoveryData.operator,
-      areaL1: recoveryData.areaL1, areaL2: recoveryData.areaL2, areaL3: recoveryData.areaL3,
-      pass: recoveryData.pass,
-      description: recoveryData.notes, lane: recoveryData.lane, step: recoveryData.step,
-    }, ...prev])
-    crashRecovery.clear()
-    saveDailyActivity(createDailyActivity, {
-      projectId: recoveredProject.id,
-      equipmentId: recoveryData.equipmentId,
-      operatorId: recoveryData.operatorId,
-      sessionId: recoveryData.sessionId,
-      startTime: start,
-      endTime: end,
-      areaId: recoveryData.areaId,
-      subAreaId: recoveryData.subAreaId,
-      subSubAreaId: recoveryData.subSubAreaId,
-      passType: recoveryData.passType,
-      layerId: recoveryData.layerId,
-      delayCodeId: recoveryData.activity?.id ?? null,
-      notes: recoveryData.notes,
-      category,
-    })
+  function adoptRecoveredContext(recoveryData, recoveredProject) {
     setProject(recoveredProject)
     setEquipment(recoveryData.equipment)
     setEquipmentId(recoveryData.equipmentId)
@@ -350,16 +291,42 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setSessionId(recoveryData.sessionId)
     setStep('tracking')
   }
+
+  function saveRecoveredSession() {
+    const { recoveryData, recoveredProject } = crashRecovery
+    const { start, end } = crashRecovery.buildRecoveredSession()
+    recordSession({
+      category: activityLabel(recoveryData.activity, recoveredProject, recoveryData.equipmentId),
+      delayCategory: delayCategoryOf(recoveryData.activity),
+      startTime: start,
+      endTime: end,
+      operatorName: recoveryData.operator,
+      areaL1: recoveryData.areaL1,
+      areaL2: recoveryData.areaL2,
+      areaL3: recoveryData.areaL3,
+      areaId: recoveryData.areaId,
+      subAreaId: recoveryData.subAreaId,
+      subSubAreaId: recoveryData.subSubAreaId,
+      pass: recoveryData.pass,
+      passType: recoveryData.passType,
+      layerId: recoveryData.layerId,
+      delayCodeId: recoveryData.activity?.id ?? null,
+      description: recoveryData.notes,
+      lane: recoveryData.lane,
+      step: recoveryData.step,
+    }, {
+      projectId: recoveredProject.id,
+      equipmentId: recoveryData.equipmentId,
+      operatorId: recoveryData.operatorId,
+      sessionId: recoveryData.sessionId,
+    })
+    crashRecovery.clear()
+    adoptRecoveredContext(recoveryData, recoveredProject)
+  }
   function discardRecoveredSession() {
     const { recoveryData, recoveredProject } = crashRecovery
     crashRecovery.clear()
-    setProject(recoveredProject)
-    setEquipment(recoveryData.equipment)
-    setEquipmentId(recoveryData.equipmentId)
-    setOperator(recoveryData.operator)
-    setOperatorId(recoveryData.operatorId)
-    setSessionId(recoveryData.sessionId)
-    setStep('tracking')
+    adoptRecoveredContext(recoveryData, recoveredProject)
   }
 
   if (step === 'sessionInterrupted' && crashRecovery.recoveryData) {
@@ -476,7 +443,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
                 <IconPlus size={18} />
               </ActionIcon>
               <Button
-                style={{ background: pendingSyncCount > 0 ? (COLORS.warningBorder ?? '#d97706') : 'rgba(255,255,255,0.15)', color: '#fff' }}
+                style={{ background: pendingSyncCount > 0 ? COLORS.warningBorder : 'rgba(255,255,255,0.15)', color: '#fff' }}
                 onClick={() => setSyncModalOpen(true)}
               >
                 {pendingSyncCount > 0 ? `⏳ ${pendingSyncCount} Pending` : '✓ Synced'}
@@ -494,7 +461,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           </Text>
           <Group gap={8}>
             {projectsOffline && (
-              <Badge style={{ background: COLORS.warningBorder ?? '#d97706', color: '#fff' }} radius="xl">
+              <Badge style={{ background: COLORS.warningBorder, color: '#fff' }} radius="xl">
                 ⚠ Offline
               </Badge>
             )}
@@ -517,13 +484,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         )}
 
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
-          <Select label={project.areaLabel ?? 'Area'} data={areaCascade.areaOptions} value={areaCascade.areaValue} onChange={areaCascade.handleAreaChange} clearable size="xs" style={{ width: 160 }} />
-          {areaCascade.showSubArea && (
-            <Select label={project.subAreaLabel} data={areaCascade.subAreaOptions} value={areaCascade.subAreaValue} onChange={areaCascade.handleSubAreaChange} clearable size="xs" style={{ width: 160 }} />
-          )}
-          {areaCascade.showSubSubArea && (
-            <Select label={project.subSubAreaLabel} data={areaCascade.subSubAreaOptions} value={areaCascade.subSubAreaValue} onChange={areaCascade.handleSubSubAreaChange} clearable size="xs" style={{ width: 160 }} />
-          )}
+          <AreaCascadeSelects cascade={areaCascade} project={project} size="xs" width={160} />
           <Select label={project.passLabel ?? 'Pass'} data={project.passOptions ?? []} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
         </Group>
@@ -585,7 +546,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           ) : (
             sessions.map((s) => (
               <Group key={s.id} wrap="nowrap" style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                <Box style={{ width: 5, height: 34, borderRadius: 3, background: s.delayCategory ? groupColor(project, s.delayCategory) : COLORS.secondaryGreen, flexShrink: 0 }} />
+                <Box style={{ width: 5, height: 34, borderRadius: 3, background: groupColor(project, s.delayCategory), flexShrink: 0 }} />
                 <Box style={{ flex: 1, minWidth: 0 }}>
                   <Text size="sm" fw={700} c={COLORS.textDark} truncate>
                     {s.category}{s.lane ? ` · Lane ${s.lane}` : ''}{s.step ? ` / Step ${s.step}` : ''}
@@ -617,25 +578,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         onClose={() => setAddPastOpen(false)}
         project={project}
         activeTileLabel={activeTileLabel(project, equipmentId)}
-        onSave={(s) => {
-          setSessions((prev) => [{ id: crypto.randomUUID(), ...s }, ...prev])
-          saveDailyActivity(createDailyActivity, {
-            projectId: project.id,
-            equipmentId,
-            operatorId: s.operatorId,
-            sessionId,
-            startTime: s.startTime,
-            endTime: s.endTime,
-            areaId: s.areaId,
-            subAreaId: s.subAreaId,
-            subSubAreaId: s.subSubAreaId,
-            passType: s.passType,
-            layerId: s.layerId,
-            delayCodeId: s.delayCodeId,
-            notes: s.description,
-            category: s.category,
-          })
-        }}
+        onSave={(s) => recordSession(s, { operatorId: s.operatorId })}
       />
 
       <SyncStatusModal

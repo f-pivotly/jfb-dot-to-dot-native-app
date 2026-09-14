@@ -21,10 +21,6 @@ export const theme = createTheme({
   white: "#FFFFFF",
 
   fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-  fontFamilyMonospace: "'JetBrains Mono', ui-monospace, Menlo, monospace",
-  headings: {
-    fontFamily: "'Barlow Condensed', 'Oswald', sans-serif",
-  },
 
   radius: {
     sm: "4px",
@@ -55,10 +51,15 @@ export const COLORS = {
   warningBg: '#FFF3CD',
   warningBorder: '#FFE69C',
   warningText: '#856404',
-  successGreen: '#28A745',
   recoveryBg: '#1a1a2e',
   shiftEndBg: '#0F2744',
   shiftEndAccent: '#1A5CA8',
+}
+
+export const MODAL_STYLES = {
+  header: { background: COLORS.primaryBlue, color: COLORS.white },
+  title: { color: COLORS.white, fontWeight: 700, fontSize: 18 },
+  close: { color: COLORS.white },
 }
 
 export const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif"

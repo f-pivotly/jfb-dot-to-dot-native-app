@@ -11,7 +11,7 @@ export default function SyncStatusModal({ opened, onClose, syncedCount, pendingS
       </Group>
       <Group justify="space-between" mb={16}>
         <Text size="sm" c={COLORS.textMedium}>Pending sync</Text>
-        <Text size="sm" fw={700} c={pendingSyncCount > 0 ? (COLORS.warningBorder ?? '#d97706') : COLORS.secondaryGreen}>{pendingSyncCount}</Text>
+        <Text size="sm" fw={700} c={pendingSyncCount > 0 ? COLORS.warningBorder : COLORS.secondaryGreen}>{pendingSyncCount}</Text>
       </Group>
 
       {pendingItems.length === 0 ? (
@@ -26,7 +26,7 @@ export default function SyncStatusModal({ opened, onClose, syncedCount, pendingS
                 </Text>
                 <Text size="10px" c={COLORS.textLight}>Queued {new Date(item.createdAt).toLocaleTimeString()}</Text>
               </Box>
-              <Badge style={{ background: COLORS.warningBg ?? '#fef3c7', color: COLORS.warningText ?? '#92400e', flexShrink: 0 }}>Pending</Badge>
+              <Badge style={{ background: COLORS.warningBg, color: COLORS.warningText, flexShrink: 0 }}>Pending</Badge>
             </Group>
           ))}
         </Box>

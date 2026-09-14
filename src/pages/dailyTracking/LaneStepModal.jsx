@@ -1,16 +1,10 @@
 import { useState } from 'react'
 import { Modal, TextInput, Button, Text } from '@mantine/core'
-import { COLORS } from '../../theme'
-
-const modalStyles = {
-  header: { background: COLORS.primaryBlue, color: COLORS.white },
-  title: { color: COLORS.white, fontWeight: 700, fontSize: 18 },
-  close: { color: COLORS.white },
-}
+import { COLORS, MODAL_STYLES } from '../../theme'
 
 export default function LaneStepModal({ opened, lastLane, lastStep, onCancel, onContinue }) {
   return (
-    <Modal opened={opened} onClose={onCancel} title={<Text fw={700}>Lane &amp; Step</Text>} size="sm" styles={modalStyles}>
+    <Modal opened={opened} onClose={onCancel} title={<Text fw={700}>Lane &amp; Step</Text>} size="sm" styles={MODAL_STYLES}>
       {opened && <LaneStepForm lastLane={lastLane} lastStep={lastStep} onContinue={onContinue} />}
     </Modal>
   )

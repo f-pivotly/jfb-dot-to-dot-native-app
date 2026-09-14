@@ -1,6 +1,6 @@
 import { COLORS, CATEGORY_COLORS } from '../../theme'
 
-export function effectiveWorkType(project, equipmentId) {
+function effectiveWorkType(project, equipmentId) {
   const eq = project?.equipment?.find((e) => e.id === equipmentId)
   const pinned = (eq?.workType || '').trim()
   if (pinned) return pinned
@@ -14,6 +14,10 @@ export function activeTileLabel(project, equipmentId) {
 
 export function activityLabel(activity, project, equipmentId) {
   return activity.active ? activeTileLabel(project, equipmentId) : activity.code
+}
+
+export function delayCategoryOf(activity) {
+  return activity.active ? null : activity.category
 }
 
 export function groupColor(project, category) {
@@ -37,6 +41,11 @@ export function formatDuration(ms) {
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
   return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+export function nowRoundedToFiveMin() {
+  const d = new Date(Math.round(Date.now() / 300000) * 300000)
+  return { hours: d.getHours(), minutes: d.getMinutes() }
 }
 
 export function formatTimeOfDay(date) {

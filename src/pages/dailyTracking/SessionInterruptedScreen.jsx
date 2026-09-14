@@ -1,7 +1,7 @@
 import { Box, Text, Button, UnstyledButton, Badge, ScrollArea } from '@mantine/core'
 import TimeStepper from './TimeStepper'
 import { COLORS, FONT_FAMILY } from '../../theme'
-import { activeTileLabel, groupColor, formatTimeOfDay } from './dailyTrackingFormat'
+import { activityLabel, delayCategoryOf, groupColor, formatTimeOfDay } from './dailyTrackingFormat'
 
 export default function SessionInterruptedScreen({
   projectsLoading, recoveredProject, recoveryData, now,
@@ -25,8 +25,8 @@ export default function SessionInterruptedScreen({
     )
   }
   const startDt = new Date(recoveryData.startTimeISO)
-  const label = recoveryData.activity.active ? activeTileLabel(recoveredProject) : recoveryData.activity.code
-  const badgeColor = recoveryData.activity.active ? COLORS.secondaryGreen : groupColor(recoveredProject, recoveryData.activity.category)
+  const label = activityLabel(recoveryData.activity, recoveredProject)
+  const badgeColor = groupColor(recoveredProject, delayCategoryOf(recoveryData.activity))
   const agoMs = now - startDt.getTime()
   const agoH = Math.floor(agoMs / 3600000)
   const agoM = Math.floor((agoMs % 3600000) / 60000)

@@ -33,7 +33,6 @@ export async function saveDailyActivity(createFn, {
     await enqueueSync({
       local_id: crypto.randomUUID(),
       domain: 'jfb_daily_activities',
-      operation: 'create',
       recordData,
       createdAt: Date.now(),
     }).catch((queueErr) => {

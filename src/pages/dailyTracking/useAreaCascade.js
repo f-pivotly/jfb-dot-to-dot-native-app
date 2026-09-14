@@ -19,9 +19,19 @@ export function useAreaCascade(project) {
 
   function labelForValue(options, value) {
     if (!value) return ''
-    const opt = options.find((o) => (typeof o === 'string' ? o === value : o.value === value))
-    if (!opt) return value
-    return typeof opt === 'string' ? opt : opt.label
+    const opt = options.find((o) => o.value === value)
+    return opt ? opt.label : value
+  }
+
+  const ids = {
+    areaId: areaValue || null,
+    subAreaId: subAreaValue || null,
+    subSubAreaId: subSubAreaValue || null,
+  }
+  const labels = {
+    areaL1: labelForValue(areaOptions, areaValue),
+    areaL2: labelForValue(subAreaOptions, subAreaValue),
+    areaL3: labelForValue(subSubAreaOptions, subSubAreaValue),
   }
 
   function handleAreaChange(v) {
@@ -52,10 +62,12 @@ export function useAreaCascade(project) {
     subSubAreaOptions,
     showSubArea,
     showSubSubArea,
+    visibleCount: 1 + (showSubArea ? 1 : 0) + (showSubSubArea ? 1 : 0),
     handleAreaChange,
     handleSubAreaChange,
     handleSubSubAreaChange,
-    labelForValue,
+    ids,
+    labels,
     reset,
   }
 }

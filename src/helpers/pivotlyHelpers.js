@@ -1,3 +1,5 @@
+import { MSG } from '../contexts/pivotlyAppConfigContext'
+
 export function setAuthToken(axiosInstance, token) {
   if (token) {
     axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -33,7 +35,7 @@ export function requestNewToken(axiosInstance) {
     function handler(event) {
       if (!event.data) return;
       if (
-        event.data.type === "PIVOTLY_AUTH_TOKEN_UPDATED" &&
+        event.data.type === MSG.AUTH_TOKEN_UPDATED &&
         event.data.token
       ) {
         cleanup();
@@ -44,7 +46,7 @@ export function requestNewToken(axiosInstance) {
     }
 
     window.addEventListener("message", handler);
-    window.parent.postMessage({ type: "PIVOTLY_REFRESH_AUTH_TOKEN" }, "*");
+    window.parent.postMessage({ type: MSG.REFRESH_AUTH_TOKEN }, "*");
   });
 
   return refreshPromise;

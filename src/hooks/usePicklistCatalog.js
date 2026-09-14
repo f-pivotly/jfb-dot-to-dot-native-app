@@ -22,5 +22,5 @@ export function usePicklistCatalog(slugs) {
     return () => { cancelledRef.current = true }
   }, [slugs])
 
-  return { loading, missing, ready: !loading && missing.length === 0 }
+  return { loading, missing }
 }

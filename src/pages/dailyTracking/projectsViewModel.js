@@ -1,5 +1,14 @@
 import { getProjectExtras } from './projectExtras'
 
+export function resolvePass(project, value) {
+  const isMulti = !!project?.isMultiLayerProject
+  return {
+    pass: (project?.passOptions ?? []).find((o) => o.value === value)?.label ?? '',
+    passType: isMulti ? null : (value || null),
+    layerId: isMulti ? (value || null) : null,
+  }
+}
+
 export function buildProjects({
   projectRecords, operatorRecords, projectOperatorRecords = [], equipmentRecords, areaRecords, areaLevelRecords,
   layerRecords = [], passOptions = [], projectDelayCodeRecords = [], masterDelayCodeRecords = [],
@@ -25,13 +34,15 @@ export function buildProjects({
         sort_order: a.sort_order ?? 0,
       }))
       .sort((a, b) => a.sort_order - b.sort_order)
-    const level1AreaNames = areasFlat.filter((a) => a.depth === 1).map((a) => a.name)
 
     const layers = layerRecords
       .filter((l) => l.project_id === p.id && l.active !== false)
       .slice()
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     const isMultiLayerProject = layers.length > 1
+    const resolvedPassOptions = isMultiLayerProject
+      ? layers.map((l) => ({ value: l.id, label: l.layer_name }))
+      : passOptions
     const delayCodes = projectDelayCodeRecords
       .filter((r) => r.project_id === p.id && r.active !== false)
       .map((r) => {
@@ -51,7 +62,6 @@ export function buildProjects({
         id: e.id,
         name: e.name,
         workType: e.work_type ?? null,
-        workTypeFrom: e.work_type_from ?? null,
       })),
       operators: projectOperatorRecords
         .filter((r) => r.project_id === p.id && r.is_active !== false)
@@ -63,13 +73,10 @@ export function buildProjects({
       ...(level1 ? { areaLabel: level1.label } : {}),
       ...(level2 ? { subAreaLabel: level2.label } : {}),
       ...(level3 ? { subSubAreaLabel: level3.label } : {}),
-      ...(level1AreaNames.length ? { areas: level1AreaNames } : {}),
-      ...(passOptions.length ? { passOptions } : {}),
+      ...(resolvedPassOptions.length ? { passOptions: resolvedPassOptions } : {}),
       ...(delayCodes.length ? { delayCodes } : {}),
       ...(layers.length ? { layers } : {}),
-      ...(isMultiLayerProject
-        ? { passLabel: 'Layer', passOptions: layers.map((l) => ({ value: l.id, label: l.layer_name })) }
-        : {}),
+      ...(isMultiLayerProject ? { passLabel: 'Layer' } : {}),
       isMultiLayerProject,
       areasFlat,
     }

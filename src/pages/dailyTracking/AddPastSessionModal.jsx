@@ -1,13 +1,9 @@
 import { useState } from 'react'
 import { Modal, TextInput, Select, Textarea, Group, Button, SimpleGrid, Text } from '@mantine/core'
-import { COLORS } from '../../theme'
+import { COLORS, MODAL_STYLES } from '../../theme'
 import { useAreaCascade } from './useAreaCascade'
-
-const modalStyles = {
-  header: { background: COLORS.primaryBlue, color: COLORS.white },
-  title: { color: COLORS.white, fontWeight: 700, fontSize: 18 },
-  close: { color: COLORS.white },
-}
+import AreaCascadeSelects from './AreaCascadeSelects'
+import { resolvePass } from './projectsViewModel'
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -43,8 +39,6 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return
     const delayCode = project?.delayCodes?.find((c) => c.code === category)
     const selectedOperator = project?.operators?.find((o) => o.id === operatorId)
-    const isMulti = project?.isMultiLayerProject
-    const passLabel = (project?.passOptions ?? []).find((o) => o.value === pass)?.label ?? ''
     onSave({
       category,
       delayCategory: delayCode?.category ?? null,
@@ -54,15 +48,9 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       durationMs: end - start,
       operatorName: selectedOperator?.name ?? '',
       operatorId,
-      areaL1: areaCascade.labelForValue(areaCascade.areaOptions, areaCascade.areaValue),
-      areaL2: areaCascade.labelForValue(areaCascade.subAreaOptions, areaCascade.subAreaValue),
-      areaL3: areaCascade.labelForValue(areaCascade.subSubAreaOptions, areaCascade.subSubAreaValue),
-      areaId: areaCascade.areaValue || null,
-      subAreaId: areaCascade.subAreaValue || null,
-      subSubAreaId: areaCascade.subSubAreaValue || null,
-      pass: passLabel,
-      passType: isMulti ? null : (pass || null),
-      layerId: isMulti ? (pass || null) : null,
+      ...areaCascade.labels,
+      ...areaCascade.ids,
+      ...resolvePass(project, pass),
       description,
     })
     reset()
@@ -75,7 +63,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
   }
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={<Text fw={700}>Add Past Session</Text>} size="md" styles={modalStyles}>
+    <Modal opened={opened} onClose={handleClose} title={<Text fw={700}>Add Past Session</Text>} size="md" styles={MODAL_STYLES}>
       <SimpleGrid cols={2} spacing={10} mb={10}>
         <TextInput label="Start Date" type="date" value={startDate} onChange={(e) => setStartDate(e.currentTarget.value)} />
         <TextInput label="Start Time" type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} />
@@ -90,14 +78,8 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
         <Select label={project?.passLabel ?? 'Pass'} data={project?.passOptions ?? []} value={pass} onChange={setPass} clearable />
       </SimpleGrid>
 
-      <SimpleGrid cols={1 + (areaCascade.showSubArea ? 1 : 0) + (areaCascade.showSubSubArea ? 1 : 0)} spacing={10} mb={10}>
-        <Select label={project?.areaLabel ?? 'Area'} data={areaCascade.areaOptions} value={areaCascade.areaValue} onChange={areaCascade.handleAreaChange} clearable />
-        {areaCascade.showSubArea && (
-          <Select label={project.subAreaLabel} data={areaCascade.subAreaOptions} value={areaCascade.subAreaValue} onChange={areaCascade.handleSubAreaChange} clearable />
-        )}
-        {areaCascade.showSubSubArea && (
-          <Select label={project.subSubAreaLabel} data={areaCascade.subSubAreaOptions} value={areaCascade.subSubAreaValue} onChange={areaCascade.handleSubSubAreaChange} clearable />
-        )}
+      <SimpleGrid cols={areaCascade.visibleCount} spacing={10} mb={10}>
+        <AreaCascadeSelects cascade={areaCascade} project={project} />
       </SimpleGrid>
 
       <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} rows={2} mb={20} />

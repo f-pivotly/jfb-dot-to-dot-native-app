@@ -1,13 +1,8 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-} from "react";
-import { api, applyAuthToken, applyAppSlug } from "../data";
-import { onTokenUpdated, requestNewToken } from "../helpers/pivotlyHelpers";
+import { useState, useEffect, useMemo } from "react";
+import { applyAuthToken, applyAppSlug } from "../data";
+import { onTokenUpdated } from "../helpers/pivotlyHelpers";
 import { getShellCache, setShellCache } from "../data/offlineDb";
-import { AppConfigContext, decodeJwtUser, MSG } from "./pivotlyAppConfigContext";
+import { AppConfigContext, MSG } from "./pivotlyAppConfigContext";
 
 const CONFIG_HANDSHAKE_TIMEOUT_MS = 3000;
 
@@ -26,7 +21,7 @@ export function PivotlyAppConfigProvider({ children }) {
     function applyConfig(authToken, appSlug, cached) {
       applyAuthToken(authToken);
       applyAppSlug(appSlug);
-      setConfig({ authToken, appSlug, user: decodeJwtUser(authToken) });
+      setConfig({ authToken, appSlug });
       setReady(true);
       setFromCache(cached);
       setError(null);
@@ -72,17 +67,13 @@ export function PivotlyAppConfigProvider({ children }) {
 
   useEffect(() => {
     return onTokenUpdated((token) => {
-      setConfig((prev) => ({ ...prev, authToken: token, user: decodeJwtUser(token) }));
+      setConfig((prev) => ({ ...prev, authToken: token }));
     });
   }, []);
 
-  const requestTokenRefresh = useCallback(() => {
-    return requestNewToken(api);
-  }, []);
-
   const value = useMemo(
-    () => ({ config, ready, error, fromCache, requestTokenRefresh }),
-    [config, ready, error, fromCache, requestTokenRefresh],
+    () => ({ config, ready, error, fromCache }),
+    [config, ready, error, fromCache],
   );
 
   return (

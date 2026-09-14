@@ -3,7 +3,7 @@ import { useDomainData } from './useDomainData'
 import { cacheRecords, getCachedRecords } from '../data/offlineDb'
 
 export function useCachedDomainData({ domain, system }) {
-  const { records, loading, error, reload } = useDomainData({ domain, system })
+  const { records, loading, error } = useDomainData({ domain, system })
   const [cachedRecords, setCachedRecords] = useState([])
 
   useEffect(() => {
@@ -25,6 +25,5 @@ export function useCachedDomainData({ domain, system }) {
     loading,
     error: offline ? null : error,
     offline,
-    reload,
   }
 }

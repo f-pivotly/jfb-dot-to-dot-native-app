@@ -3,16 +3,16 @@ import { IconArrowLeft } from '@tabler/icons-react'
 import { COLORS, FONT_FAMILY } from '../../theme'
 import brennanLogo from './assets/brennan-logo.png'
 
-export default function PickerScreen({ title, subtitle, items, selectedId, onSelect, onBack, background = COLORS.primaryBlue, showLogo = true }) {
+export default function PickerScreen({ title, subtitle, items, selectedId, onSelect, onBack }) {
   return (
     <Box
       style={{
-        flex: 1, minHeight: 0, overflowY: 'auto', background,
+        flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.primaryBlue,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '28px 20px 40px', fontFamily: FONT_FAMILY,
       }}
     >
-      {showLogo && <Image src={brennanLogo} h={44} fit="contain" mb={20} />}
+      <Image src={brennanLogo} h={44} fit="contain" mb={20} />
 
       <Text c="#fff" fw={800} size="xl" ta="center" mb={4}>{title}</Text>
       {subtitle && <Text c="rgba(255,255,255,0.55)" size="sm" ta="center" mb={16}>{subtitle}</Text>}
@@ -50,7 +50,6 @@ export default function PickerScreen({ title, subtitle, items, selectedId, onSel
             >
               <Box>
                 <Text size="md" fw={700} c="#fff">{item.label}</Text>
-                {item.sub && <Text size="xs" c="rgba(255,255,255,0.5)" mt={2}>{item.sub}</Text>}
               </Box>
               {isSelected && (
                 <Badge size="xs" variant="light" style={{ background: 'rgba(0,220,120,0.3)', color: 'rgba(255,255,255,0.85)' }}>

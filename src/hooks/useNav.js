@@ -46,5 +46,5 @@ export function useNav() {
 
   const defaultItem = menuItems.find((n) => n.page_slug === 'apg-jfb-dot-to-dot-daily-event') ?? null;
 
-  return { navItems, menuItems, defaultItem, dataAccess, loading, error, fromCache };
+  return { menuItems, defaultItem, dataAccess, loading, error, fromCache };
 }

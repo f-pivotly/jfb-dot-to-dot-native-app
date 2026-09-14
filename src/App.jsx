@@ -10,20 +10,36 @@ import { useAppConfig } from "./contexts/pivotlyAppConfigContext";
 import { usePicklistCatalog } from "./hooks/usePicklistCatalog";
 import { REQUIRED_PICKLISTS } from "./config/requiredPicklists";
 
+function BootNotice({ loading, message, detail }) {
+  return (
+    <Center
+      style={{
+        height: "100vh",
+        flexDirection: "column",
+        gap: loading ? 12 : 8,
+        background: "#141414",
+      }}
+    >
+      {loading && <Loader color="red" size="sm" />}
+      <Text size="xs" c={loading ? "#666" : "#ef4444"} fw={loading ? 400 : 600}>
+        {message}
+      </Text>
+      {detail && (
+        <Text size="xs" c="#666" ta="center" maw={420}>
+          {detail}
+        </Text>
+      )}
+    </Center>
+  );
+}
+
 export default function App() {
   const { pathname } = useLocation();
   const { ready, error: configError, fromCache: configFromCache } = useAppConfig();
   const { loading: picklistsLoading, missing: missingPicklists } = usePicklistCatalog(REQUIRED_PICKLISTS);
 
   const { menuItems, defaultItem, dataAccess, fromCache: navFromCache } = useNav();
-  const {
-    pageData,
-    loading: pageLoading,
-    error: pageError,
-    slug,
-    loadPage,
-    fromCache: pageFromCache,
-  } = usePageDetails();
+  const { pageData, slug, loadPage, fromCache: pageFromCache } = usePageDetails();
 
   const usingCachedShell = configFromCache || navFromCache || pageFromCache;
 
@@ -37,96 +53,29 @@ export default function App() {
   }, [resolvedSlug, slug, loadPage]);
 
   if (!ready && !configError) {
-    return (
-      <Center
-        style={{
-          height: "100vh",
-          flexDirection: "column",
-          gap: 12,
-          background: "#141414",
-        }}
-      >
-        <Loader color="red" size="sm" />
-        <Text size="xs" c="#666">
-          Waiting for configuration…
-        </Text>
-      </Center>
-    );
+    return <BootNotice loading message="Waiting for configuration…" />;
   }
 
   if (configError) {
-    return (
-      <Center
-        style={{
-          height: "100vh",
-          flexDirection: "column",
-          gap: 8,
-          background: "#141414",
-        }}
-      >
-        <Text size="xs" c="#ef4444" fw={600}>
-          Configuration error
-        </Text>
-        <Text size="xs" c="#666">
-          {configError}
-        </Text>
-      </Center>
-    );
+    return <BootNotice message="Configuration error" detail={configError} />;
   }
 
   if (picklistsLoading) {
-    return (
-      <Center
-        style={{
-          height: "100vh",
-          flexDirection: "column",
-          gap: 12,
-          background: "#141414",
-        }}
-      >
-        <Loader color="red" size="sm" />
-        <Text size="xs" c="#666">
-          Loading picklist catalog…
-        </Text>
-      </Center>
-    );
+    return <BootNotice loading message="Loading picklist catalog…" />;
   }
 
   if (missingPicklists.length > 0) {
     return (
-      <Center
-        style={{
-          height: "100vh",
-          flexDirection: "column",
-          gap: 8,
-          background: "#141414",
-        }}
-      >
-        <Text size="xs" c="#ef4444" fw={600}>
-          Configuration error — missing required picklists
-        </Text>
-        <Text size="xs" c="#666" ta="center" maw={420}>
-          {missingPicklists.join(", ")}
-        </Text>
-      </Center>
+      <BootNotice
+        message="Configuration error — missing required picklists"
+        detail={missingPicklists.join(", ")}
+      />
     );
-  }
-
-  function handleRetry() {
-    if (resolvedSlug) loadPage(resolvedSlug);
   }
 
   let mainContent;
   if (activeItem) {
-    mainContent = (
-      <PageContent
-        pageData={pageData}
-        loading={pageLoading}
-        error={pageError}
-        slug={slug}
-        onRetry={handleRetry}
-      />
-    );
+    mainContent = <PageContent pageData={pageData} />;
   } else if (hasShellDataAccess) {
     mainContent = <DailyTrackingPage domainSources={dataAccess} />;
   } else {
