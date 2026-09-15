@@ -69,6 +69,19 @@ export async function deleteQueueItem(localId) {
   return wrap(store(db, STORE_QUEUE, 'readwrite').delete(localId))
 }
 
+export async function deleteQueueItemsForSession(sessionRowId) {
+  if (!sessionRowId) return 0
+  const db = await openDB()
+  const items = await wrap(store(db, STORE_QUEUE, 'readonly').getAll())
+  const matches = items.filter((item) => item.session_row_id === sessionRowId)
+  if (!matches.length) return 0
+  const tx = db.transaction(STORE_QUEUE, 'readwrite')
+  const os = tx.objectStore(STORE_QUEUE)
+  matches.forEach((item) => os.delete(item.local_id))
+  await wrapTx(tx)
+  return matches.length
+}
+
 export async function setShellCache(key, value) {
   const db = await openDB()
   return wrap(store(db, STORE_SHELL, 'readwrite').put({ key, value }))

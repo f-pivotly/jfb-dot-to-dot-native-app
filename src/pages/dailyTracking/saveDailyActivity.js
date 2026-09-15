@@ -3,7 +3,7 @@ import { notifyWarning, notifyError } from './notify'
 
 export async function saveDailyActivity(createFn, {
   projectId, equipmentId, operatorId, sessionId, startTime, endTime,
-  areaId, subAreaId, subSubAreaId, passType, layerId, delayCodeId, notes, category,
+  areaId, subAreaId, subSubAreaId, passType, layerId, delayCodeId, notes, category, sessionRowId,
 }) {
   const area = areaId || subAreaId || subSubAreaId
     ? {
@@ -34,6 +34,7 @@ export async function saveDailyActivity(createFn, {
     try {
       await enqueueSync({
         local_id: crypto.randomUUID(),
+        session_row_id: sessionRowId ?? null,
         domain: 'jfb_daily_activities',
         recordData,
         createdAt: Date.now(),

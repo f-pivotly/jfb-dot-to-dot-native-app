@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getShellCache, setShellCache } from '../../data/offlineDb'
+import { notifyWarning } from './notify'
 
 const CACHE_KEY = 'favoriteDelayCodes'
 const DEVICE_SCOPE = '_device'
@@ -29,9 +30,14 @@ export function useFavoriteCodes(operatorId, projectId) {
     const key = operatorId ?? DEVICE_SCOPE
     const all = currentRef.current
     const current = all[key]?.[projectId] ?? []
-    const next = current.includes(codeNum)
+    const removing = current.includes(codeNum)
+    if (!removing && current.length >= MAX_FAVORITES) {
+      notifyWarning(`You can pin up to ${MAX_FAVORITES} favourites`, 'Unpin one to make room.')
+      return
+    }
+    const next = removing
       ? current.filter((c) => c !== codeNum)
-      : [...current, codeNum].slice(-MAX_FAVORITES)
+      : [...current, codeNum]
     const updated = { ...all, [key]: { ...(all[key] ?? {}), [projectId]: next } }
     currentRef.current = updated
     setByOperator(updated)

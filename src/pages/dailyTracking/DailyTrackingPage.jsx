@@ -11,6 +11,7 @@ import ShiftStartScreen from './ShiftStartScreen'
 import ConfirmSetupScreen from './ConfirmSetupScreen'
 import ShiftEndOverlay from './ShiftEndOverlay'
 import SyncStatusModal from './SyncStatusModal'
+import ConfirmDeleteModal from './ConfirmDeleteModal'
 import { COLORS, FONT_FAMILY } from '../../theme'
 import { activeTileLabel, activityLabel, delayCategoryOf, groupColor, formatClock, formatDuration, formatTimeOfDay, hoursAndMinutesOf, localDateKey, nowRoundedToFiveMin, sessionColor, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
 import { putSession, getSessionsForDate, deleteStoredSession } from '../../data/offlineDb'
@@ -29,6 +30,7 @@ import brennanLogo from './assets/brennan-logo.png'
 
 const GAP_THRESHOLD_MS = 60000
 const FUTURE_START_TOLERANCE_MS = 6 * 3600000
+const NO_ROSTER_NOTICE = 'No operators are set up on this project. Your name shows on this device only — the sessions will save without an operator until a PM adds you to the project.'
 
 function notAfterNow(remembered) {
   const candidate = new Date()
@@ -109,7 +111,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [shiftEndOpen, setShiftEndOpen] = useState(false)
   const [shiftEndTime, setShiftEndTime] = useState(nowRoundedToFiveMin)
 
-  const { pendingSyncCount, pendingItems, drainQueue } = useOfflineSyncQueue({ createDailyActivity })
+  const { pendingSyncCount, pendingItems, drainQueue, dropSessionFromQueue } = useOfflineSyncQueue({ createDailyActivity })
+  const [deleteRow, setDeleteRow] = useState(null)
 
   useEffect(() => {
     if (!activeSession) return
@@ -178,6 +181,17 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     if (item.id) remember({ operatorId: item.id })
     goToShiftStart()
   }
+  function beginOperatorSwap() {
+    if (activeSession) endActiveSession()
+    setStep('swapOperator')
+  }
+  function selectSwapOperator(item) {
+    setOperator(item.label)
+    setOperatorId(item.id)
+    if (item.id) remember({ operatorId: item.id })
+    setStep('tracking')
+    notifyInfo(`Operator: ${item.label}`)
+  }
   function goToShiftStart() {
     const last = lastUsed?.lastShiftStartISO
     setShiftTime(last ? hoursAndMinutesOf(new Date(last)) : nowRoundedToFiveMin())
@@ -240,9 +254,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   function recordSession(fields, overrides = {}) {
     const row = sessionRow(fields)
-    setSessions((prev) => [row, ...prev])
+    setSessions((prev) => [row, ...prev].sort((a, b) => b.startTime - a.startTime))
     putSession(row).catch(() => {})
     saveDailyActivity(createDailyActivity, {
+      sessionRowId: row.id,
       projectId: project?.id,
       equipmentId,
       operatorId,
@@ -339,6 +354,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       step: stepVal || '',
     }
     setActiveSession(session)
+    setNotes('')
     setNow(Date.now())
     persistActiveSession(session)
     notifyInfo(`Started: ${activityLabel(activity, project, equipmentId)}`)
@@ -360,10 +376,18 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setPendingActivity(null)
   }
 
-  function deleteSession(id) {
-    setSessions((prev) => prev.filter((s) => s.id !== id))
-    deleteStoredSession(id).catch(() => {})
-    notifyInfo('Session removed from this device', 'The synced record is unchanged.')
+  async function confirmDeleteSession() {
+    const target = deleteRow
+    if (!target) return
+    setDeleteRow(null)
+    setSessions((prev) => prev.filter((s) => s.id !== target.id))
+    deleteStoredSession(target.id).catch(() => {})
+    const dropped = await dropSessionFromQueue(target.id)
+    if (dropped > 0) {
+      notifyInfo('Session deleted', 'It had not synced yet, so nothing was sent to the office.')
+    } else {
+      notifyInfo('Session removed from this device', 'The synced record is unchanged.')
+    }
   }
 
   function confirmShiftEnd(explicitEnd) {
@@ -494,9 +518,24 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         items={project.operators.map((o) => ({ id: o.id, label: o.name, initials: true }))}
         selectedId={operatorId ?? lastUsed?.operatorId}
         allowTextFallback={project.operators.length === 0}
-        fallbackNotice="No operators are set up on this project. Your name shows on this device only — the sessions will save without an operator until a PM adds you to the project."
+        fallbackNotice={NO_ROSTER_NOTICE}
         onSelect={selectOperator}
         onBack={() => setStep(project.equipment.length > 1 ? 'equipment' : 'project')}
+      />
+    )
+  }
+
+  if (step === 'swapOperator' && project) {
+    return (
+      <PickerScreen
+        title="Who is operating?"
+        subtitle={`${equipment} · ${project.name}`}
+        items={project.operators.map((o) => ({ id: o.id, label: o.name, initials: true }))}
+        selectedId={operatorId}
+        allowTextFallback={project.operators.length === 0}
+        fallbackNotice={NO_ROSTER_NOTICE}
+        onSelect={selectSwapOperator}
+        onBack={() => setStep('tracking')}
       />
     )
   }
@@ -552,7 +591,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
             </Group>
             <Group gap={10}>
               <ActionIcon
-                radius="xl" size={44} title="Change Operator" onClick={() => setStep('operator')}
+                radius="xl" size={44} title="Change Operator" onClick={beginOperatorSwap}
                 style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
               >
                 <IconUserCircle size={18} />
@@ -678,7 +717,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
                   </Text>
                 </Box>
                 <Text size="sm" fw={700} c={COLORS.primaryBlue} style={{ flexShrink: 0 }}>{formatDuration(s.durationMs)}</Text>
-                <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => deleteSession(s.id)}>
+                <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setDeleteRow(s)}>
                   <IconTrash size={14} />
                 </ActionIcon>
               </Group>
@@ -703,6 +742,12 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           recordSession(s, { operatorId: s.operatorId })
           notifySuccess('Past session added')
         }}
+      />
+
+      <ConfirmDeleteModal
+        session={deleteRow}
+        onCancel={() => setDeleteRow(null)}
+        onConfirm={confirmDeleteSession}
       />
 
       <SyncStatusModal

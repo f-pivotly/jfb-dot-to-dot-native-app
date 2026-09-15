@@ -4,7 +4,8 @@ import { IconStar, IconStarFilled } from '@tabler/icons-react'
 export default function TileButton({ code, color, isFavorite, onToggleFavorite, onClick, isActive }) {
   return (
     <UnstyledButton
-      onClick={onClick}
+      onClick={isActive ? undefined : onClick}
+      aria-disabled={isActive || undefined}
       style={{
         position: 'relative',
         padding: '12px 26px 12px 16px',
@@ -17,6 +18,7 @@ export default function TileButton({ code, color, isFavorite, onToggleFavorite, 
         fontWeight: 600,
         lineHeight: 1.3,
         textAlign: 'center',
+        cursor: isActive ? 'default' : 'pointer',
       }}
     >
       {code.code}

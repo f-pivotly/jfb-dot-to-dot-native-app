@@ -25,7 +25,7 @@ export default function SessionInterruptedScreen({
     )
   }
   const startDt = new Date(recoveryData.startTimeISO)
-  const label = activityLabel(recoveryData.activity, recoveredProject)
+  const label = activityLabel(recoveryData.activity, recoveredProject, recoveryData.equipmentId)
   const badgeColor = groupColor(recoveredProject, delayCategoryOf(recoveryData.activity))
   const agoMs = now - startDt.getTime()
   const agoH = Math.floor(agoMs / 3600000)

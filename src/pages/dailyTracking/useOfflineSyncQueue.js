@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { getAllQueueItems, deleteQueueItem } from '../../data/offlineDb'
+import { getAllQueueItems, deleteQueueItem, deleteQueueItemsForSession } from '../../data/offlineDb'
 import { notifySuccess } from './notify'
 
 export function useOfflineSyncQueue({ createDailyActivity }) {
@@ -29,6 +29,15 @@ export function useOfflineSyncQueue({ createDailyActivity }) {
     }
   }, [createDailyActivity])
 
+  const dropSessionFromQueue = useCallback(async (sessionRowId) => {
+    const dropped = await deleteQueueItemsForSession(sessionRowId).catch(() => 0)
+    if (dropped > 0) {
+      setPendingItems((prev) => prev.filter((i) => i.session_row_id !== sessionRowId))
+      setPendingSyncCount((n) => Math.max(0, n - dropped))
+    }
+    return dropped
+  }, [])
+
   useEffect(() => {
     const kickoffId = setTimeout(drainQueue, 0)
     const intervalId = setInterval(drainQueue, 30000)
@@ -40,5 +49,5 @@ export function useOfflineSyncQueue({ createDailyActivity }) {
     }
   }, [drainQueue])
 
-  return { pendingSyncCount, pendingItems, drainQueue }
+  return { pendingSyncCount, pendingItems, drainQueue, dropSessionFromQueue }
 }
