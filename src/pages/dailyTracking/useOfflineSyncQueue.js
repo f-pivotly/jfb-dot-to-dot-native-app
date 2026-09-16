@@ -1,42 +1,86 @@
 import { useState, useCallback, useEffect } from 'react'
-import { getAllQueueItems, deleteQueueItem, deleteQueueItemsForSession } from '../../data/offlineDb'
-import { notifySuccess } from './notify'
+import {
+  getAllQueueItems, deleteQueueItem, deleteQueueItemsForSession,
+  markQueueItemFailed, retryFailedQueueItems,
+} from '../../data/offlineDb'
+import { notifySuccess, notifyInfo } from './notify'
+
+const DOMAIN = 'jfb_daily_activities'
+
+function alreadyLanded(err, status) {
+  if (status === 409) return true
+  let body
+  try {
+    body = JSON.stringify(err?.response?.data ?? '')
+  } catch {
+    body = String(err?.message ?? '')
+  }
+  return /23505|duplicate key|already exists|unique constraint/i.test(body)
+}
+
+export function classifyWriteError(err) {
+  const status = err?.response?.status
+  if (alreadyLanded(err, status)) return 'landed'
+  if (!status || status >= 500) return 'transient'
+  if (status >= 400) return 'terminal'
+  return 'transient'
+}
+
+function reasonFor(err) {
+  const status = err?.response?.status
+  const detail = err?.response?.data?.message || err?.response?.data?.error || err?.message
+  return [status ? `HTTP ${status}` : null, detail].filter(Boolean).join(' — ').slice(0, 200)
+}
 
 export function useOfflineSyncQueue({ createDailyActivity }) {
-  const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const [pendingItems, setPendingItems] = useState([])
+  const [failedItems, setFailedItems] = useState([])
+
+  const readQueue = useCallback(async () => {
+    const items = (await getAllQueueItems().catch(() => [])).filter((i) => i.domain === DOMAIN)
+    const pending = items.filter((i) => i.status !== 'failed')
+    const failed = items.filter((i) => i.status === 'failed')
+    setPendingItems(pending)
+    setFailedItems(failed)
+    return pending
+  }, [])
 
   const drainQueue = useCallback(async () => {
-    const items = await getAllQueueItems().catch(() => [])
-    const ours = items.filter((item) => item.domain === 'jfb_daily_activities')
-    setPendingItems(ours)
-    setPendingSyncCount(ours.length)
-    if (!navigator.onLine || !createDailyActivity) return
+    const pending = await readQueue()
+    if (!navigator.onLine || !createDailyActivity || !pending.length) return
     let drained = 0
-    for (const item of ours) {
+    for (const item of pending) {
       try {
         await createDailyActivity(item.recordData)
         await deleteQueueItem(item.local_id)
         drained += 1
-        setPendingItems((prev) => prev.filter((i) => i.local_id !== item.local_id))
-        setPendingSyncCount((n) => Math.max(0, n - 1))
-      } catch {
-        continue
+      } catch (err) {
+        const verdict = classifyWriteError(err)
+        if (verdict === 'landed') {
+          await deleteQueueItem(item.local_id)
+          drained += 1
+        } else if (verdict === 'terminal') {
+          await markQueueItemFailed(item.local_id, reasonFor(err))
+        }
       }
     }
+    await readQueue()
     if (drained > 0) {
       notifySuccess(`${drained} session${drained === 1 ? '' : 's'} synced`)
     }
-  }, [createDailyActivity])
+  }, [createDailyActivity, readQueue])
+
+  const retryFailed = useCallback(async () => {
+    const moved = await retryFailedQueueItems().catch(() => 0)
+    if (moved > 0) notifyInfo(`${moved} session${moved === 1 ? '' : 's'} queued again`)
+    await drainQueue()
+  }, [drainQueue])
 
   const dropSessionFromQueue = useCallback(async (sessionRowId) => {
     const dropped = await deleteQueueItemsForSession(sessionRowId).catch(() => 0)
-    if (dropped > 0) {
-      setPendingItems((prev) => prev.filter((i) => i.session_row_id !== sessionRowId))
-      setPendingSyncCount((n) => Math.max(0, n - dropped))
-    }
+    if (dropped > 0) await readQueue()
     return dropped
-  }, [])
+  }, [readQueue])
 
   useEffect(() => {
     const kickoffId = setTimeout(drainQueue, 0)
@@ -49,5 +93,13 @@ export function useOfflineSyncQueue({ createDailyActivity }) {
     }
   }, [drainQueue])
 
-  return { pendingSyncCount, pendingItems, drainQueue, dropSessionFromQueue }
+  return {
+    pendingItems,
+    failedItems,
+    pendingSyncCount: pendingItems.length,
+    failedSyncCount: failedItems.length,
+    drainQueue,
+    retryFailed,
+    dropSessionFromQueue,
+  }
 }

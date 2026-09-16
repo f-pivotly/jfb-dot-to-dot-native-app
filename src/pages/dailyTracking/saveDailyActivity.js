@@ -1,9 +1,10 @@
-import { enqueueSync } from '../../data/offlineDb'
+import { enqueueSync, getDeviceId } from '../../data/offlineDb'
 import { notifyWarning, notifyError } from './notify'
 
 export async function saveDailyActivity(createFn, {
   projectId, equipmentId, operatorId, sessionId, startTime, endTime,
   areaId, subAreaId, subSubAreaId, passType, layerId, delayCodeId, notes, category, sessionRowId,
+  lane, step,
 }) {
   const area = areaId || subAreaId || subSubAreaId
     ? {
@@ -13,6 +14,8 @@ export async function saveDailyActivity(createFn, {
       }
     : null
   const recordData = {
+    local_id: sessionRowId ?? null,
+    device_id: await getDeviceId().catch(() => null),
     project_id: projectId,
     equipment_id: equipmentId,
     operator_id: operatorId,
@@ -23,6 +26,8 @@ export async function saveDailyActivity(createFn, {
     area,
     pass_type: passType || null,
     layer_id: layerId || null,
+    lane: lane || null,
+    step: step || null,
     delay_code_id: delayCodeId || null,
     notes: notes || null,
     category: category || null,
@@ -36,6 +41,8 @@ export async function saveDailyActivity(createFn, {
         local_id: crypto.randomUUID(),
         session_row_id: sessionRowId ?? null,
         domain: 'jfb_daily_activities',
+        status: 'pending',
+        attempts: 0,
         recordData,
         createdAt: Date.now(),
       })

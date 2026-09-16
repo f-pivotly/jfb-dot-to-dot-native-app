@@ -54,6 +54,34 @@ function wrapTx(tx) {
   })
 }
 
+export async function getDeviceId() {
+  const existing = await getShellCache('deviceId').catch(() => null)
+  if (existing) return existing
+  const id = crypto.randomUUID()
+  await setShellCache('deviceId', id).catch(() => {})
+  return id
+}
+
+export async function markQueueItemFailed(localId, reason) {
+  const db = await openDB()
+  const os = store(db, STORE_QUEUE, 'readwrite')
+  const item = await wrap(os.get(localId))
+  if (!item) return
+  return wrap(os.put({ ...item, status: 'failed', lastError: reason ?? null, failedAt: Date.now() }))
+}
+
+export async function retryFailedQueueItems() {
+  const db = await openDB()
+  const items = await wrap(store(db, STORE_QUEUE, 'readonly').getAll())
+  const failed = items.filter((i) => i.status === 'failed')
+  if (!failed.length) return 0
+  const tx = db.transaction(STORE_QUEUE, 'readwrite')
+  const os = tx.objectStore(STORE_QUEUE)
+  failed.forEach((i) => os.put({ ...i, status: 'pending', lastError: null }))
+  await wrapTx(tx)
+  return failed.length
+}
+
 export async function enqueueSync(item) {
   const db = await openDB()
   return wrap(store(db, STORE_QUEUE, 'readwrite').put(item))
@@ -111,11 +139,9 @@ export async function putSession(session) {
   return wrap(store(db, STORE_SESSIONS, 'readwrite').put(session))
 }
 
-export async function getSessionsForDate(date) {
-  if (!date) return []
+export async function getAllStoredSessions() {
   const db = await openDB()
-  const idx = store(db, STORE_SESSIONS, 'readonly').index('date_idx')
-  return wrap(idx.getAll(date))
+  return wrap(store(db, STORE_SESSIONS, 'readonly').getAll())
 }
 
 export async function deleteStoredSession(id) {

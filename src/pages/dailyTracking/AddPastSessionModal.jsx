@@ -3,19 +3,19 @@ import { Modal, TextInput, Select, Textarea, Group, Button, SimpleGrid, Text } f
 import { COLORS, MODAL_STYLES } from '../../theme'
 import { useAreaCascade } from './useAreaCascade'
 import AreaCascadeSelects from './AreaCascadeSelects'
-import { resolvePass } from './projectsViewModel'
+import { resolvePass, visibleDelayCodes } from './projectsViewModel'
+import { localDateKey } from './dailyTrackingFormat'
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
 function nowTimeStr() {
   return new Date().toTimeString().slice(0, 5)
 }
 
-export default function AddPastSessionModal({ opened, onClose, project, activeTileLabel, onSave }) {
-  const [startDate, setStartDate] = useState(todayStr())
+export default function AddPastSessionModal({
+  opened, onClose, project, equipmentId, activeTileLabel, passFieldSpec, workTypeNameById, onSave,
+}) {
+  const [startDate, setStartDate] = useState(localDateKey())
   const [startTime, setStartTime] = useState(nowTimeStr())
-  const [endDate, setEndDate] = useState(todayStr())
+  const [endDate, setEndDate] = useState(localDateKey())
   const [endTime, setEndTime] = useState(nowTimeStr())
   const [category, setCategory] = useState(activeTileLabel)
   const [operatorId, setOperatorId] = useState(project?.operators?.[0]?.id ?? '')
@@ -23,12 +23,13 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
   const [description, setDescription] = useState('')
   const areaCascade = useAreaCascade(project)
 
-  const categoryOptions = [activeTileLabel, ...(project?.delayCodes?.map((c) => c.code) ?? [])]
+  const availableCodes = visibleDelayCodes(project, equipmentId, workTypeNameById)
+  const categoryOptions = [activeTileLabel, ...availableCodes.map((c) => c.code)]
   const operatorOptions = (project?.operators ?? []).map((o) => ({ value: o.id, label: o.name }))
 
   function reset() {
-    setStartDate(todayStr()); setStartTime(nowTimeStr())
-    setEndDate(todayStr()); setEndTime(nowTimeStr())
+    setStartDate(localDateKey()); setStartTime(nowTimeStr())
+    setEndDate(localDateKey()); setEndTime(nowTimeStr())
     setCategory(activeTileLabel); setOperatorId(project?.operators?.[0]?.id ?? '')
     areaCascade.reset(); setPass(''); setDescription('')
   }
@@ -37,7 +38,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
     const start = new Date(`${startDate}T${startTime}:00`)
     const end = new Date(`${endDate}T${endTime}:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return
-    const delayCode = project?.delayCodes?.find((c) => c.code === category)
+    const delayCode = availableCodes.find((c) => c.code === category)
     const selectedOperator = project?.operators?.find((o) => o.id === operatorId)
     onSave({
       category,
@@ -50,7 +51,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
       operatorId,
       ...areaCascade.labels,
       ...areaCascade.ids,
-      ...resolvePass(project, pass),
+      ...resolvePass(project, equipmentId, pass, passFieldSpec.options),
       description,
     })
     reset()
@@ -75,7 +76,7 @@ export default function AddPastSessionModal({ opened, onClose, project, activeTi
 
       <SimpleGrid cols={2} spacing={10} mb={10}>
         <Select label="Operator" data={operatorOptions} value={operatorId} onChange={setOperatorId} allowDeselect={false} />
-        <Select label={project?.passLabel ?? 'Pass'} data={project?.passOptions ?? []} value={pass} onChange={setPass} clearable />
+        <Select label={passFieldSpec.label} data={passFieldSpec.options} value={pass} onChange={setPass} clearable />
       </SimpleGrid>
 
       <SimpleGrid cols={areaCascade.visibleCount} spacing={10} mb={10}>

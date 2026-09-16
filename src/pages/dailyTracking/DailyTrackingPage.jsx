@@ -13,11 +13,11 @@ import ShiftEndOverlay from './ShiftEndOverlay'
 import SyncStatusModal from './SyncStatusModal'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
 import { COLORS, FONT_FAMILY } from '../../theme'
-import { activeTileLabel, activityLabel, delayCategoryOf, groupColor, formatClock, formatDuration, formatTimeOfDay, hoursAndMinutesOf, localDateKey, nowRoundedToFiveMin, sessionColor, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
-import { putSession, getSessionsForDate, deleteStoredSession } from '../../data/offlineDb'
+import { activeTileLabel, activityLabel, dateKeyOf, dayHeading, delayCategoryOf, usesLaneStep, groupColor, groupSessionsByDate, formatClock, formatTimeOfDay, hoursAndMinutesOf, localDateKey, nowRoundedToFiveMin, sessionColor, totalHoursOf, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
+import { putSession, getAllStoredSessions, deleteStoredSession } from '../../data/offlineDb'
 import { writeRecovery, clearRecovery } from './recoverySession'
 import { saveDailyActivity } from './saveDailyActivity'
-import { buildProjects, resolvePass } from './projectsViewModel'
+import { buildProjects, resolvePass, passField, visibleDelayCodes } from './projectsViewModel'
 import { useAreaCascade } from './useAreaCascade'
 import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
@@ -68,15 +68,19 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { records: layerRecords } = useCachedDomainSource(domainSources, 'jfb_project_layers')
   const { records: projectDelayCodeRecords } = useCachedDomainSource(domainSources, 'jfb_project_delay_codes')
   const { records: masterDelayCodeRecords } = useCachedDomainSource(domainSources, 'jfb_delay_codes')
+  const { records: workTypeRecords } = useCachedDomainSource(domainSources, 'jfb_work_types')
   const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
+  const { values: liftValues, labels: liftLabels } = usePicklist('pkl-jfb-lift')
 
   const { create: createDailyActivity } = useDomainSource(domainSources, 'jfb_daily_activities', { autoLoad: false })
 
-  const passOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
+  const passTypeOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
+  const liftOptions = liftValues.map((v) => ({ value: v, label: liftLabels[v] ?? v }))
+  const workTypeNameById = new Map(workTypeRecords.map((w) => [w.id, w.name]))
 
   const projects = buildProjects({
     projectRecords, operatorRecords, projectOperatorRecords, equipmentRecords, areaRecords, areaLevelRecords,
-    layerRecords, passOptions, projectDelayCodeRecords, masterDelayCodeRecords,
+    layerRecords, projectDelayCodeRecords, masterDelayCodeRecords,
   })
 
   const crashRecovery = useCrashRecovery(projects)
@@ -101,6 +105,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   const areaCascade = useAreaCascade(project)
   const [passValue, setPassValue] = useState('')
+  const passFieldSpec = passField(project, equipmentId, { passTypeOptions, liftOptions })
   const [notes, setNotes] = useState('')
   const [lastLane, setLastLane] = useState('')
   const [lastStep, setLastStep] = useState('')
@@ -111,7 +116,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const [shiftEndOpen, setShiftEndOpen] = useState(false)
   const [shiftEndTime, setShiftEndTime] = useState(nowRoundedToFiveMin)
 
-  const { pendingSyncCount, pendingItems, drainQueue, dropSessionFromQueue } = useOfflineSyncQueue({ createDailyActivity })
+  const {
+    pendingSyncCount, pendingItems, failedSyncCount, failedItems,
+    drainQueue, retryFailed, dropSessionFromQueue,
+  } = useOfflineSyncQueue({ createDailyActivity })
   const [deleteRow, setDeleteRow] = useState(null)
 
   useEffect(() => {
@@ -122,7 +130,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
   useEffect(() => {
     let cancelled = false
-    getSessionsForDate(localDateKey())
+    getAllStoredSessions()
       .then((rows) => {
         if (cancelled || !rows.length) return
         setSessions(rows.sort((a, b) => b.startTime - a.startTime))
@@ -272,6 +280,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       delayCodeId: fields.delayCodeId,
       notes: fields.description,
       category: fields.category,
+      lane: fields.lane,
+      step: fields.step,
       ...overrides,
     })
   }
@@ -348,7 +358,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       startTime,
       ...areaCascade.labels,
       ...areaCascade.ids,
-      ...resolvePass(project, passValue),
+      ...resolvePass(project, equipmentId, passValue, passFieldSpec.options),
       notes,
       lane: lane || '',
       step: stepVal || '',
@@ -361,7 +371,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   }
 
   function handleActivityClick(activity) {
-    if (project.usesLaneStep) {
+    if (usesLaneStep(project, equipmentId)) {
       setPendingActivity(activity)
       setLaneStepOpen(true)
       return
@@ -570,12 +580,15 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   if (!project) return null
 
   const activeIsRunning = !!activeSession
-  const delayCodes = project.delayCodes || []
+  const delayCodes = visibleDelayCodes(project, equipmentId, workTypeNameById)
   const seenCats = []
   delayCodes.forEach((c) => {
     if (!seenCats.includes(c.category)) seenCats.push(c.category)
   })
-  const totalHours = sessions.reduce((sum, s) => sum + s.durationMs, 0) / 3600000
+  const todayKey = localDateKey()
+  const todayRows = sessions.filter((s) => dateKeyOf(s) === todayKey)
+  const todayHours = totalHoursOf(todayRows)
+  const days = groupSessionsByDate(sessions)
 
   return (
     <ScrollArea style={{ flex: 1, minHeight: 0, background: COLORS.lightGray }}>
@@ -603,10 +616,17 @@ export default function DailyTrackingPage({ domainSources = [] }) {
                 <IconPlus size={18} />
               </ActionIcon>
               <Button
-                style={{ background: pendingSyncCount > 0 ? COLORS.warningBorder : 'rgba(255,255,255,0.15)', color: '#fff' }}
+                style={{
+                  background: failedSyncCount > 0
+                    ? COLORS.accentRed
+                    : (pendingSyncCount > 0 ? COLORS.warningBorder : 'rgba(255,255,255,0.15)'),
+                  color: '#fff',
+                }}
                 onClick={() => setSyncModalOpen(true)}
               >
-                {pendingSyncCount > 0 ? `⏳ ${pendingSyncCount} Pending` : '✓ Synced'}
+                {failedSyncCount > 0 && `⚠ ${failedSyncCount} Failed`}
+                {failedSyncCount === 0 && pendingSyncCount > 0 && `⏳ ${pendingSyncCount} Pending`}
+                {failedSyncCount === 0 && pendingSyncCount === 0 && '✓ Synced'}
               </Button>
               <Button style={{ background: COLORS.primaryBlue }} onClick={openShiftEnd}>
                 End of Day
@@ -626,7 +646,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
               </Badge>
             )}
             <Badge style={{ background: COLORS.primaryBlue, color: '#fff' }} radius="xl">
-              {sessions.length} session{sessions.length === 1 ? '' : 's'}
+              {todayRows.length} session{todayRows.length === 1 ? '' : 's'} today
             </Badge>
           </Group>
         </Group>
@@ -645,7 +665,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
 
         <Group px={16} py={10} gap={10} align="flex-end" style={{ background: '#f8f9fa', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
           <AreaCascadeSelects cascade={areaCascade} project={project} size="xs" width={160} />
-          <Select label={project.passLabel ?? 'Pass'} data={project.passOptions ?? []} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
+          <Select label={passFieldSpec.label} data={passFieldSpec.options} value={passValue} onChange={(v) => setPassValue(v ?? '')} clearable size="xs" style={{ width: 140 }} />
           <Textarea label="Notes" placeholder="Optional..." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={1} size="xs" style={{ flex: 1, minWidth: 200 }} />
         </Group>
 
@@ -693,7 +713,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
           ))}
 
           <Group justify="flex-end" mt={8}>
-            <Text size="sm" fw={700} c={COLORS.primaryBlue}>Total Hours: {totalHours.toFixed(2)}</Text>
+            <Text size="sm" fw={700} c={COLORS.primaryBlue}>Today&rsquo;s Hours: {todayHours.toFixed(2)}</Text>
           </Group>
         </Box>
 
@@ -704,23 +724,43 @@ export default function DailyTrackingPage({ domainSources = [] }) {
               <Text size="xs" c={COLORS.textLight} ta="center" mt={4}>Tap a category to start tracking</Text>
             </Box>
           ) : (
-            sessions.map((s) => (
-              <Group key={s.id} wrap="nowrap" style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                <Box style={{ width: 5, height: 34, borderRadius: 3, background: sessionColor(project, s), flexShrink: 0 }} />
-                <Box style={{ flex: 1, minWidth: 0 }}>
-                  <Text size="sm" fw={700} c={COLORS.textDark} truncate>
-                    {s.category}{s.lane ? ` · Lane ${s.lane}` : ''}{s.step ? ` / Step ${s.step}` : ''}
+            days.map((day) => (
+              <Box key={day.dateKey} mb={14}>
+                <Group
+                  justify="space-between"
+                  wrap="nowrap"
+                  px={4}
+                  py={6}
+                  mb={6}
+                  style={{ borderBottom: `2px solid ${COLORS.borderGray}` }}
+                >
+                  <Text size="xs" fw={800} c={COLORS.textDark} tt="uppercase" style={{ letterSpacing: '0.06em' }}>
+                    {dayHeading(day.dateKey)}
                   </Text>
-                  <Text size="xs" c={COLORS.textMedium}>
-                    {formatTimeOfDay(s.startTime)}–{formatTimeOfDay(s.endTime)} · {s.operatorName}
-                    {s.areaL1 ? ` · ${s.areaL1}` : ''}{s.areaL2 ? ` · ${s.areaL2}` : ''}{s.areaL3 ? ` · ${s.areaL3}` : ''}{s.pass ? ` · ${s.pass}` : ''}
+                  <Text size="xs" fw={600} c={COLORS.textMedium} style={{ flexShrink: 0 }}>
+                    {day.rows.length} session{day.rows.length === 1 ? '' : 's'} · {day.hours.toFixed(2)} hrs
                   </Text>
-                </Box>
-                <Text size="sm" fw={700} c={COLORS.primaryBlue} style={{ flexShrink: 0 }}>{formatDuration(s.durationMs)}</Text>
-                <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setDeleteRow(s)}>
-                  <IconTrash size={14} />
-                </ActionIcon>
-              </Group>
+                </Group>
+
+                {day.rows.map((s) => (
+                  <Group key={s.id} wrap="nowrap" style={{ background: COLORS.lightGray, border: `1px solid ${COLORS.borderGray}`, borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                    <Box style={{ width: 5, height: 34, borderRadius: 3, background: sessionColor(project, s), flexShrink: 0 }} />
+                    <Box style={{ flex: 1, minWidth: 0 }}>
+                      <Text size="sm" fw={700} c={COLORS.textDark} truncate>
+                        {s.category}{s.lane ? ` · Lane ${s.lane}` : ''}{s.step ? ` / Step ${s.step}` : ''}
+                      </Text>
+                      <Text size="xs" c={COLORS.textMedium}>
+                        {formatTimeOfDay(s.startTime)}–{formatTimeOfDay(s.endTime)} · {s.operatorName}
+                        {s.areaL1 ? ` · ${s.areaL1}` : ''}{s.areaL2 ? ` · ${s.areaL2}` : ''}{s.areaL3 ? ` · ${s.areaL3}` : ''}{s.pass ? ` · ${s.pass}` : ''}
+                      </Text>
+                    </Box>
+                    <Text size="sm" fw={700} c={COLORS.primaryBlue} style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{formatClock(s.durationMs)}</Text>
+                    <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setDeleteRow(s)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+              </Box>
             ))
           )}
         </Box>
@@ -737,7 +777,10 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         opened={addPastOpen}
         onClose={() => setAddPastOpen(false)}
         project={project}
+        equipmentId={equipmentId}
         activeTileLabel={activeTileLabel(project, equipmentId)}
+        passFieldSpec={passFieldSpec}
+        workTypeNameById={workTypeNameById}
         onSave={(s) => {
           recordSession(s, { operatorId: s.operatorId })
           notifySuccess('Past session added')
@@ -753,10 +796,13 @@ export default function DailyTrackingPage({ domainSources = [] }) {
       <SyncStatusModal
         opened={syncModalOpen}
         onClose={() => setSyncModalOpen(false)}
-        syncedCount={Math.max(0, sessions.length - pendingSyncCount)}
+        syncedCount={Math.max(0, todayRows.length - pendingSyncCount - failedSyncCount)}
         pendingSyncCount={pendingSyncCount}
         pendingItems={pendingItems}
+        failedSyncCount={failedSyncCount}
+        failedItems={failedItems}
         onRetry={drainQueue}
+        onRetryFailed={retryFailed}
       />
 
       <ShiftEndOverlay

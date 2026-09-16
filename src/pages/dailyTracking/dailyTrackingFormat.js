@@ -1,15 +1,40 @@
 import { COLORS, CATEGORY_COLORS } from '../../theme'
 
-function effectiveWorkType(project, equipmentId) {
+export const WORK_TYPES = {
+  hydraulicDredging: 'Hydraulic Dredging',
+  mechanicalDredging: 'Mechanical Dredging',
+  hydraulicCapping: 'Hydraulic Capping',
+  mechanicalCapping: 'Mechanical Capping',
+}
+
+const CAPPING = [WORK_TYPES.hydraulicCapping, WORK_TYPES.mechanicalCapping]
+
+function normalizeWorkType(value) {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function matches(workType, candidates) {
+  const wt = normalizeWorkType(workType)
+  return wt !== '' && candidates.some((c) => normalizeWorkType(c) === wt)
+}
+
+export function effectiveWorkType(project, equipmentId) {
   const eq = project?.equipment?.find((e) => e.id === equipmentId)
   const pinned = (eq?.workType || '').trim()
   if (pinned) return pinned
   return (project?.workType || '').trim()
 }
 
+export function isCappingWork(project, equipmentId) {
+  return matches(effectiveWorkType(project, equipmentId), CAPPING)
+}
+
+export function usesLaneStep(project, equipmentId) {
+  return matches(effectiveWorkType(project, equipmentId), [WORK_TYPES.hydraulicCapping])
+}
+
 export function activeTileLabel(project, equipmentId) {
-  const wt = effectiveWorkType(project, equipmentId).toLowerCase()
-  return (wt.includes('cap') || wt.includes('placement')) ? 'ACTIVE PLACEMENT' : 'ACTIVE DREDGING'
+  return isCappingWork(project, equipmentId) ? 'ACTIVE PLACEMENT' : 'ACTIVE DREDGING'
 }
 
 export function activityLabel(activity, project, equipmentId) {
@@ -44,13 +69,6 @@ export function formatClock(ms) {
   return `${h}:${m}:${s}`
 }
 
-export function formatDuration(ms) {
-  const totalMin = Math.round(ms / 60000)
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
-
 export function nowRoundedToFiveMin() {
   const d = new Date(Math.round(Date.now() / 300000) * 300000)
   return { hours: d.getHours(), minutes: d.getMinutes() }
@@ -69,4 +87,42 @@ export function localDateKey(date = new Date()) {
 
 export function formatTimeOfDay(date) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+}
+
+export function dateKeyOf(session) {
+  return session.date ?? localDateKey(session.startTime)
+}
+
+export function dayHeading(dateKey, today = new Date()) {
+  const noon = new Date(`${dateKey}T12:00:00`)
+  if (Number.isNaN(noon.getTime())) return dateKey
+
+  const todayKey = localDateKey(today)
+  const yesterdayKey = localDateKey(new Date(today.getTime() - 86400000))
+  const short = noon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  if (dateKey === todayKey) return `Today · ${short}`
+  if (dateKey === yesterdayKey) return `Yesterday · ${short}`
+  return noon.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    ...(noon.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+  })
+}
+
+export function totalHoursOf(rows) {
+  return rows.reduce((sum, s) => sum + s.durationMs, 0) / 3600000
+}
+
+export function groupSessionsByDate(sessions) {
+  const buckets = new Map()
+  sessions.forEach((s) => {
+    const key = dateKeyOf(s)
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key).push(s)
+  })
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([dateKey, rows]) => ({ dateKey, rows, hours: totalHoursOf(rows) }))
 }
