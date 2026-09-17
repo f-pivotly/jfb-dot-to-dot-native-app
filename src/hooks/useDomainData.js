@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchDomainRecords, createDomainRecord } from '../data'
 import { useAppConfig } from '../contexts/pivotlyAppConfigContext'
 
+const MAX_QUERY_ROWS = 5000
+
 export function useDomainData({ domain, system, autoLoad = true }) {
   const { config } = useAppConfig()
   const [records, setRecords] = useState([])
@@ -38,5 +40,13 @@ export function useDomainData({ domain, system, autoLoad = true }) {
     return res
   }, [domain, system, config.appSlug, load, autoLoad])
 
-  return { records, loading, error, create }
+  const query = useCallback(async ({ filters, sortCol, sortDir, limit = MAX_QUERY_ROWS } = {}) => {
+    if (!domain || !system) return []
+    const res = await fetchDomainRecords({
+      domain, system, appSlug: config.appSlug, limit, filters, sortCol, sortDir,
+    })
+    return Array.isArray(res) ? res : (res?.data ?? [])
+  }, [domain, system, config.appSlug])
+
+  return { records, loading, error, create, query }
 }

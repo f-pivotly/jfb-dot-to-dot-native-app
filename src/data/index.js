@@ -81,14 +81,34 @@ export async function fetchPageDetails(appSlug, pageSlug) {
   const { data } = await api.get(`/native-apps/${appSlug}/pages/${pageSlug}/resolve`)
   return data
 }
-export async function fetchPicklistValues(slug) {
-  const { data } = await api.get(`/picklists/${slug}/values`)
-  return data?.data ?? data ?? []
+function asRowArray(payload) {
+  if (Array.isArray(payload)) return payload
+  if (!payload || typeof payload !== 'object') return []
+  for (const key of ['data', 'rows', 'values', 'items', 'result']) {
+    const nested = asRowArray(payload[key])
+    if (nested.length) return nested
+  }
+  return []
 }
 
-export async function fetchDomainRecords({ domain, system, appSlug, limit = 25, offset = 0 }) {
+export async function fetchPicklistValues(slug) {
+  const { data } = await api.get(`/picklists/${slug}/values`)
+  return asRowArray(data)
+}
+
+export async function fetchDomainRecords({
+  domain, system, appSlug, limit = 25, offset = 0, filters, sortCol, sortDir,
+}) {
   const { data } = await api.post('/core-data-read', {
-    parameters: { domain, system, app_slug: appSlug, limit, offset },
+    parameters: {
+      domain,
+      system,
+      app_slug: appSlug,
+      limit,
+      offset,
+      ...(filters ? { filters } : {}),
+      ...(sortCol ? { sort_col: sortCol, sort_dir: sortDir ?? 'asc' } : {}),
+    },
   })
   return data
 }

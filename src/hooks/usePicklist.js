@@ -1,16 +1,26 @@
 import { useEffect, useState, useRef } from 'react'
 import { fetchPicklistValues } from '../data'
+import { getShellCache, setShellCache } from '../data/offlineDb'
 
 const inflight = new Map()
+
+const picklistCacheKey = (slug) => `picklist:${slug}`
 
 export function loadPicklist(slug) {
   if (!inflight.has(slug)) {
     inflight.set(
       slug,
-      fetchPicklistValues(slug).catch((err) => {
-        inflight.delete(slug)
-        throw err
-      })
+      fetchPicklistValues(slug)
+        .then((rows) => {
+          if (Array.isArray(rows)) setShellCache(picklistCacheKey(slug), rows).catch(() => {})
+          return rows
+        })
+        .catch(async (err) => {
+          const cached = await getShellCache(picklistCacheKey(slug)).catch(() => null)
+          if (Array.isArray(cached) && cached.length) return cached
+          inflight.delete(slug)
+          throw err
+        })
     )
   }
   return inflight.get(slug)

@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { loadPicklist } from './usePicklist'
 
-export function usePicklistCatalog(slugs) {
+export function usePicklistCatalog(slugs, { enabled = true } = {}) {
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState([])
   const cancelledRef = useRef(false)
 
   useEffect(() => {
+    if (!enabled) return undefined
     cancelledRef.current = false
     if (!cancelledRef.current) setLoading(true)
 
@@ -20,7 +21,7 @@ export function usePicklistCatalog(slugs) {
     })
 
     return () => { cancelledRef.current = true }
-  }, [slugs])
+  }, [slugs, enabled])
 
   return { loading, missing }
 }

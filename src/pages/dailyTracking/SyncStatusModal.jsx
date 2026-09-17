@@ -9,6 +9,7 @@ function itemWindow(item) {
 export default function SyncStatusModal({
   opened, onClose, syncedCount, pendingSyncCount, pendingItems,
   failedItems = [], failedSyncCount = 0, onRetry, onRetryFailed,
+  onRestore, restoring = false,
 }) {
   return (
     <Modal opened={opened} onClose={onClose} title={<Text fw={700} size="sm">Sync Status</Text>} size="sm">
@@ -59,7 +60,25 @@ export default function SyncStatusModal({
         </Box>
       )}
 
-      <Group justify="flex-end">
+      <Box mt={16} pt={12} style={{ borderTop: `1px solid ${COLORS.borderGray}` }}>
+        <Text size="10px" fw={700} c={COLORS.textLight} tt="uppercase" mb={6} style={{ letterSpacing: '0.06em' }}>
+          Restore
+        </Text>
+        <Text size="xs" c={COLORS.textMedium} mb={10}>
+          Brings back sessions this machine already sent to the office. Use it after clearing the app or moving to
+          another tablet. Anything still waiting to send is kept.
+        </Text>
+        <Button
+          size="xs"
+          variant="default"
+          loading={restoring}
+          onClick={onRestore}
+        >
+          Restore from the office
+        </Button>
+      </Box>
+
+      <Group justify="flex-end" mt={16}>
         <Button variant="default" size="xs" onClick={onClose}>Close</Button>
         {pendingSyncCount > 0 && (
           <Button size="xs" style={{ background: COLORS.primaryBlue }} onClick={onRetry}>Retry Now</Button>

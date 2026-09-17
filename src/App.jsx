@@ -34,7 +34,10 @@ function BootNotice({ loading, message, detail }) {
 
 export default function App() {
   const { ready, error: configError, fromCache: configFromCache } = useAppConfig();
-  const { loading: picklistsLoading, missing: missingPicklists } = usePicklistCatalog(REQUIRED_PICKLISTS);
+  const { loading: picklistsLoading, missing: missingPicklists } = usePicklistCatalog(
+    REQUIRED_PICKLISTS,
+    { enabled: ready },
+  );
 
   const {
     page,

@@ -14,7 +14,8 @@ import SyncStatusModal from './SyncStatusModal'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
 import { COLORS, FONT_FAMILY } from '../../theme'
 import { activeTileLabel, activityLabel, dateKeyOf, dayHeading, delayCategoryOf, usesLaneStep, groupColor, groupSessionsByDate, formatClock, formatTimeOfDay, hoursAndMinutesOf, localDateKey, nowRoundedToFiveMin, sessionColor, totalHoursOf, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
-import { putSession, getAllStoredSessions, deleteStoredSession } from '../../data/offlineDb'
+import { putSession, putSessions, getAllStoredSessions, deleteStoredSession } from '../../data/offlineDb'
+import { toSessionRows, mergeSessions, restoreFilters, RESTORE_SORT_COL } from './restoreSessions'
 import { writeRecovery, clearRecovery } from './recoverySession'
 import { saveDailyActivity } from './saveDailyActivity'
 import { buildProjects, resolvePass, passField, visibleDelayCodes } from './projectsViewModel'
@@ -23,7 +24,7 @@ import { useOfflineSyncQueue } from './useOfflineSyncQueue'
 import { useCrashRecovery } from './useCrashRecovery'
 import { useLastUsedSelection } from './useLastUsedSelection'
 import { useFavoriteCodes } from './useFavoriteCodes'
-import { notifyInfo, notifySuccess } from './notify'
+import { notifyInfo, notifySuccess, notifyError } from './notify'
 import { useDomainSource, useCachedDomainSource } from '../../hooks/useDomainSource'
 import { usePicklist } from '../../hooks/usePicklist'
 import brennanLogo from './assets/brennan-logo.png'
@@ -72,7 +73,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
   const { values: passTypeValues, labels: passTypeLabels } = usePicklist('pkl-jfb-pass-type')
   const { values: liftValues, labels: liftLabels } = usePicklist('pkl-jfb-lift')
 
-  const { create: createDailyActivity } = useDomainSource(domainSources, 'jfb_daily_activities', { autoLoad: false })
+  const { create: createDailyActivity, query: queryDailyActivities } = useDomainSource(domainSources, 'jfb_daily_activities', { autoLoad: false })
 
   const passTypeOptions = passTypeValues.map((v) => ({ value: v, label: passTypeLabels[v] ?? v }))
   const liftOptions = liftValues.map((v) => ({ value: v, label: liftLabels[v] ?? v }))
@@ -121,6 +122,7 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     drainQueue, retryFailed, dropSessionFromQueue,
   } = useOfflineSyncQueue({ createDailyActivity })
   const [deleteRow, setDeleteRow] = useState(null)
+  const [restoring, setRestoring] = useState(false)
 
   useEffect(() => {
     if (!activeSession) return
@@ -384,6 +386,34 @@ export default function DailyTrackingPage({ domainSources = [] }) {
     setLaneStepOpen(false)
     startSession(pendingActivity, lane, stepVal)
     setPendingActivity(null)
+  }
+
+  async function restoreFromOffice() {
+    if (!project || restoring) return
+    setRestoring(true)
+    try {
+      const rows = await queryDailyActivities({
+        filters: restoreFilters(project.id, equipmentId),
+        sortCol: RESTORE_SORT_COL,
+        sortDir: 'desc',
+      })
+      const restored = toSessionRows(rows, { project, passOptions: passFieldSpec.options })
+      const { merged, added } = mergeSessions(sessions, restored)
+      if (!added.length) {
+        notifyInfo('Nothing to restore', 'The office has no sessions for this machine that are missing here.')
+        return
+      }
+      setSessions(merged)
+      await putSessions(added).catch(() => {})
+      notifySuccess(
+        `Restored ${added.length} session${added.length === 1 ? '' : 's'}`,
+        'Pulled back from the office for this project and machine.',
+      )
+    } catch (err) {
+      notifyError('Could not restore', err?.message ?? 'The office could not be reached.')
+    } finally {
+      setRestoring(false)
+    }
   }
 
   async function confirmDeleteSession() {
@@ -803,6 +833,8 @@ export default function DailyTrackingPage({ domainSources = [] }) {
         failedItems={failedItems}
         onRetry={drainQueue}
         onRetryFailed={retryFailed}
+        onRestore={restoreFromOffice}
+        restoring={restoring}
       />
 
       <ShiftEndOverlay

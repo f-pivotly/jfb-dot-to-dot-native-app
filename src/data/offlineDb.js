@@ -139,6 +139,16 @@ export async function putSession(session) {
   return wrap(store(db, STORE_SESSIONS, 'readwrite').put(session))
 }
 
+export async function putSessions(sessions) {
+  const rows = (sessions ?? []).filter((s) => s?.id)
+  if (!rows.length) return
+  const db = await openDB()
+  const tx = db.transaction(STORE_SESSIONS, 'readwrite')
+  const os = tx.objectStore(STORE_SESSIONS)
+  rows.forEach((s) => os.put(s))
+  return wrapTx(tx)
+}
+
 export async function getAllStoredSessions() {
   const db = await openDB()
   return wrap(store(db, STORE_SESSIONS, 'readonly').getAll())
