@@ -1,23 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchDomainRecords, createDomainRecord } from '../data'
+import { fetchAllDomainRecords, createDomainRecord } from '../data'
 import { useAppConfig } from '../contexts/pivotlyAppConfigContext'
 
-const MAX_QUERY_ROWS = 5000
-
-export function useDomainData({ domain, system, autoLoad = true }) {
+export function useDomainData({ domain, system, autoLoad = true, filters, enabled = true }) {
   const { config } = useAppConfig()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [loadedAt, setLoadedAt] = useState(0)
   const cancelledRef = useRef(false)
+  const filtersKey = JSON.stringify(filters ?? null)
 
   const load = useCallback(() => {
-    if (!domain || !system) return Promise.resolve()
+    if (!domain || !system || !enabled) return Promise.resolve()
     if (!cancelledRef.current) setLoading(true)
     if (!cancelledRef.current) setError(null)
-    return fetchDomainRecords({ domain, system, appSlug: config.appSlug, limit: 1000 })
-      .then((res) => {
-        if (!cancelledRef.current) setRecords(Array.isArray(res) ? res : (res?.data ?? []))
+    return fetchAllDomainRecords({ domain, system, appSlug: config.appSlug, filters: JSON.parse(filtersKey) ?? undefined })
+      .then((rows) => {
+        if (!cancelledRef.current) {
+          setRecords(rows)
+          setLoadedAt(Date.now())
+        }
       })
       .catch((err) => {
         if (!cancelledRef.current) setError(err.message)
@@ -25,7 +28,7 @@ export function useDomainData({ domain, system, autoLoad = true }) {
       .finally(() => {
         if (!cancelledRef.current) setLoading(false)
       })
-  }, [domain, system, config.appSlug])
+  }, [domain, system, config.appSlug, filtersKey, enabled])
 
   useEffect(() => {
     if (!autoLoad) return
@@ -40,13 +43,10 @@ export function useDomainData({ domain, system, autoLoad = true }) {
     return res
   }, [domain, system, config.appSlug, load, autoLoad])
 
-  const query = useCallback(async ({ filters, sortCol, sortDir, limit = MAX_QUERY_ROWS } = {}) => {
+  const query = useCallback(async ({ filters: queryFilters } = {}) => {
     if (!domain || !system) return []
-    const res = await fetchDomainRecords({
-      domain, system, appSlug: config.appSlug, limit, filters, sortCol, sortDir,
-    })
-    return Array.isArray(res) ? res : (res?.data ?? [])
+    return fetchAllDomainRecords({ domain, system, appSlug: config.appSlug, filters: queryFilters })
   }, [domain, system, config.appSlug])
 
-  return { records, loading, error, create, query }
+  return { records, loading, error, loadedAt, create, query }
 }

@@ -121,15 +121,24 @@ export async function getShellCache(key) {
   return row?.value
 }
 
-export async function cacheRecords(domain, records) {
+export async function replaceCachedRecords(domain, records) {
   if (!domain || !Array.isArray(records)) return
   const db = await openDB()
   const tx = db.transaction(STORE_CACHE, 'readwrite')
   const os = tx.objectStore(STORE_CACHE)
-  records.forEach((record) => {
-    if (record?.id == null) return
-    os.put({ cache_key: `${domain}::${record.id}`, domain, record })
-  })
+  const cursorReq = os.index('domain_idx').openKeyCursor(IDBKeyRange.only(domain))
+  cursorReq.onsuccess = () => {
+    const cursor = cursorReq.result
+    if (cursor) {
+      os.delete(cursor.primaryKey)
+      cursor.continue()
+      return
+    }
+    records.forEach((record) => {
+      if (record?.id == null) return
+      os.put({ cache_key: `${domain}::${record.id}`, domain, record })
+    })
+  }
   return wrapTx(tx)
 }
 

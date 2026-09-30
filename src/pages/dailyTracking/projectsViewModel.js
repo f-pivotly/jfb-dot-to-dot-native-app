@@ -1,5 +1,14 @@
 import { effectiveWorkType, isCappingWork } from './dailyTrackingFormat'
 
+function compareSortOrder(a, b) {
+  const sa = a.sort_order
+  const sb = b.sort_order
+  if (sa == null && sb == null) return 0
+  if (sa == null) return 1
+  if (sb == null) return -1
+  return sa - sb
+}
+
 export function isMultiLayerProject(project, equipmentId) {
   return isCappingWork(project, equipmentId) && (project?.layers?.length ?? 0) > 1
 }
@@ -81,7 +90,10 @@ export function buildProjects({
       id: p.id,
       name: p.name,
       client: p.client_name ?? null,
-      equipment: equipmentRecords.filter((e) => e.project_id === p.id && e.is_active !== false).map((e) => ({
+      equipment: equipmentRecords
+        .filter((e) => e.project_id === p.id && e.is_active !== false)
+        .sort(compareSortOrder)
+        .map((e) => ({
         id: e.id,
         name: e.name,
         workType: e.work_type ?? null,

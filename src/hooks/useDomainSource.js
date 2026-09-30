@@ -7,9 +7,9 @@ function findDomainSource(dataAccess, domain) {
   )
 }
 
-export function useCachedDomainSource(dataAccess, domain) {
+export function useCachedDomainSource(dataAccess, domain, { filters, enabled = true } = {}) {
   const source = findDomainSource(dataAccess, domain)
-  return useCachedDomainData({ domain: source?.domain, system: source?.system })
+  return useCachedDomainData({ domain: source?.domain, system: source?.system, filters, enabled })
 }
 
 export function useDomainSource(dataAccess, domain, { autoLoad = true } = {}) {

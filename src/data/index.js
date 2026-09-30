@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { requestNewToken, setAuthToken } from '../helpers/pivotlyHelpers'
 
-const IS_LOCAL = true
+const IS_LOCAL = false
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://dev.pivotly.com/vm/api/v3'
 
 function resolveApiBase() {
@@ -97,7 +97,7 @@ export async function fetchPicklistValues(slug) {
 }
 
 export async function fetchDomainRecords({
-  domain, system, appSlug, limit = 25, offset = 0, filters, sortCol, sortDir,
+  domain, system, appSlug, limit = 25, offset = 0, filters, sortCol, sortDir, countMode,
 }) {
   const { data } = await api.post('/core-data-read', {
     parameters: {
@@ -108,9 +108,27 @@ export async function fetchDomainRecords({
       offset,
       ...(filters ? { filters } : {}),
       ...(sortCol ? { sort_col: sortCol, sort_dir: sortDir ?? 'asc' } : {}),
+      ...(countMode ? { count_mode: countMode } : {}),
     },
   })
   return data
+}
+
+const READ_ALL_PAGE_SIZE = 1000
+
+function hasEmptyInFilter(filters) {
+  return Object.values(filters ?? {}).some((v) => Array.isArray(v) && v.length === 0)
+}
+
+export async function fetchAllDomainRecords({ domain, system, appSlug, filters, pageSize = READ_ALL_PAGE_SIZE }) {
+  if (hasEmptyInFilter(filters)) return []
+  const all = []
+  for (let offset = 0; ; offset += pageSize) {
+    const res = await fetchDomainRecords({ domain, system, appSlug, filters, limit: pageSize, offset, countMode: 'none' })
+    const rows = Array.isArray(res) ? res : (res?.data ?? [])
+    all.push(...rows)
+    if (rows.length < pageSize || res?.meta?.has_more === false) return all
+  }
 }
 
 export async function createDomainRecord({ domain, system, appSlug, recordData }) {

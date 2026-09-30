@@ -1,7 +1,5 @@
 import { localDateKey, STARTUP_SHUTDOWN_CATEGORY, STARTUP_SHUTDOWN_LABEL } from './dailyTrackingFormat'
 
-export const RESTORE_SORT_COL = 'start_date_time'
-
 export function restoreFilters(projectId, equipmentId) {
   return {
     ...(projectId ? { project_id: projectId } : {}),
